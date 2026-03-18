@@ -3,8 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 // ── Credentials ───────────────────────────────────────────────────────────
 // NOTE: Finnhub key is visible in client bundle — acceptable for personal use.
 // For extra security, move to a Vercel environment variable (VITE_FINNHUB_KEY).
-export const FINNHUB_KEY = 'd6sg8l1r01qj447bia8gd6sg8l1r01qj447bia90'
-export const FINNHUB     = 'https://finnhub.io/api/v1'
+// API key lives in api/finnhub.js (server-side) — not needed in browser code anymore
+export const FINNHUB_KEY = 'd6sg8l1r01qj447bia8gd6sg8l1r01qj447bia90'  // kept for reference only
+// All Finnhub calls go through our Vercel proxy at /api/finnhub to avoid CORS
+export const FINNHUB = '/api/finnhub?path='
 
 // Supabase anon key is safe to be public — Row Level Security protects data.
 export const sb = createClient(
@@ -134,10 +136,7 @@ async function yahooQuote(symbol, type) {
   const ySym = toYahooSymbol(symbol, type)
   if (!ySym) return null
   try {
-    const r = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ySym)}?interval=1d&range=5d`,
-      { headers: { Accept: 'application/json' } }
-    )
+    const r = await fetch(`/api/yahoo?symbol=${encodeURIComponent(ySym)}`)
     if (!r.ok) return null
     const d = await r.json()
     const meta = d?.chart?.result?.[0]?.meta
@@ -153,7 +152,7 @@ export async function fetchPrice(symbol, type, fxRates = DEFAULT_FX) {
   if (type === 'crypto') {
     try {
       const sym = CRYPTO_MAP[symbol] || `BINANCE:${symbol}USDT`
-      const r = await fetch(`${FINNHUB}/quote?symbol=${sym}&token=${FINNHUB_KEY}`)
+      const r = await fetch(`${FINNHUB}/quote&symbol=${sym}`)
       const d = await r.json()
       return d.c > 0 ? d.c : null
     } catch { return null }
@@ -175,7 +174,7 @@ export async function fetchPrice(symbol, type, fxRates = DEFAULT_FX) {
   // ── Finnhub (good for US stocks, some EU) ──
   try {
     const sym = toFinnhubSymbol(symbol, type)
-    const r = await fetch(`${FINNHUB}/quote?symbol=${sym}&token=${FINNHUB_KEY}`)
+    const r = await fetch(`${FINNHUB}/quote&symbol=${sym}`)
     const d = await r.json()
     // Finnhub returns USD for US stocks; for EU it sometimes returns local currency.
     // We treat Finnhub result as USD for US tickers (no suffix) and convert for others.
@@ -206,7 +205,7 @@ export async function fetchDividends(symbol, fxRates = DEFAULT_FX) {
     const sym = toFinnhubSymbol(symbol, 'stock')
     const from = new Date(); from.setFullYear(from.getFullYear() - 1)
     const r = await fetch(
-      `${FINNHUB}/stock/dividend?symbol=${sym}&from=${from.toISOString().slice(0,10)}&to=${new Date().toISOString().slice(0,10)}&token=${FINNHUB_KEY}`
+      `${FINNHUB}/stock/dividend&symbol=${sym}&from=${from.toISOString().slice(0,10)}&to=${new Date().toISOString().slice(0,10)}`
     )
     const d = await r.json()
     if (!Array.isArray(d) || d.length === 0) return []
@@ -222,7 +221,7 @@ export async function fetchDividends(symbol, fxRates = DEFAULT_FX) {
 // Returns map of { CURRENCY: units_per_1_USD } for all available currencies
 export async function fetchAllFxRates() {
   try {
-    const r = await fetch(`${FINNHUB}/forex/rates?base=USD&token=${FINNHUB_KEY}`)
+    const r = await fetch(`${FINNHUB}/forex/rates&base=USD`)
     const d = await r.json()
     if (!d.quote) return null
     const rates = { USD: 1 }

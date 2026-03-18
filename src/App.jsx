@@ -169,7 +169,7 @@ export default function App() {
     if (!nh.isin || nh.isin.length < 10) return
     setIsinLookup('loading')
     try {
-      const r = await fetch(`${FINNHUB}/search?q=${nh.isin.toUpperCase()}&token=${FINNHUB_KEY}`)
+      const r = await fetch(`${FINNHUB}/search&q=${nh.isin.toUpperCase()}`)
       const d = await r.json()
       const results = d?.result || []
       const isinUpper = nh.isin.toUpperCase()
@@ -198,7 +198,7 @@ export default function App() {
 
         let sector = nh.sector
         try {
-          const pr = await fetch(`${FINNHUB}/stock/profile2?symbol=${sym}&token=${FINNHUB_KEY}`)
+          const pr = await fetch(`${FINNHUB}/stock/profile2&symbol=${sym}`)
           const pd = await pr.json()
           if (pd.finnhubIndustry) sector = pd.finnhubIndustry
         } catch {}
