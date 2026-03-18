@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { sb, ETF_HOLDINGS, COLORS, delay, fetchPrice, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB } from './config.js'
+import { sb, ETF_DATA, ETF_HOLDINGS, ETF_ALIASES, resolveEtf, COLORS, delay, fetchPrice, fetchPriceAndYield, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB } from './config.js'
 import { Card, SLabel, Btn, FLabel, Inp, Sel, Modal, thS, Td, fmtE, fmtN, pct } from './ui.jsx'
 import AuthScreen from './AuthScreen.jsx'
 
@@ -91,32 +91,42 @@ export default function App() {
     for (const chunk of chunks) {
       const results = await Promise.all(chunk.map(async h => {
         addLog(`Fetching ${h.symbol}…`)
-        const price = await fetchPrice(h.symbol, h.type, activeFxRates)
+        const data = await fetchPriceAndYield(h.symbol, h.type, activeFxRates)
 
-        // Use amountEUR from dividends (already converted to EUR in fetchDividends)
-        let divYield = h.dividendYield
-        if (h.type === 'stock' && price) {
+        if (!data?.price) {
+          addLog(`⚠ ${h.symbol}: no price found, keeping last value`)
+          return h
+        }
+
+        const price = data.price
+
+        // Dividend yield: use Yahoo live yield, fallback to Finnhub dividends for stocks
+        let divYield = data.dividendYield ?? h.dividendYield
+        if (h.type === 'stock' && price && data.dividendYield == null) {
           const divs = await fetchDividends(h.symbol, activeFxRates)
           if (divs.length > 0) {
             const annualEUR = divs.reduce((s, d) => s + (d.amountEUR || 0), 0)
             divYield = parseFloat(((annualEUR / price) * 100).toFixed(2))
           }
         }
+        divYield = divYield ?? h.dividendYield
 
-        if (price) {
-          addLog(`✓ ${h.symbol}: €${price.toFixed(2)}`)
-          const { error } = await sb.from('holdings')
-            .update({ current_price: price, dividend_yield: divYield, updated_at: new Date().toISOString() })
-            .eq('id', h.id)
-          if (error) addLog(`⚠ ${h.symbol}: DB update failed`)
-          return { ...h, currentPrice: price, dividendYield: divYield }
-        } else {
-          addLog(`⚠ ${h.symbol}: no price found, keeping last value`)
-          return h
-        }
+        // TER: auto-fill from curated ETF_DATA for known ETFs
+        const annualFee = data.annualFee != null ? data.annualFee : h.annualFee
+
+        const parts = [`€${price.toFixed(2)}`]
+        if (divYield != null && divYield > 0) parts.push(`div ${divYield.toFixed(2)}%`)
+        if (data.annualFee != null) parts.push(`TER ${annualFee}%`)
+        addLog(`✓ ${h.symbol}: ${parts.join(' · ')}`)
+
+        const { error } = await sb.from('holdings')
+          .update({ current_price: price, dividend_yield: divYield, annual_fee: annualFee, updated_at: new Date().toISOString() })
+          .eq('id', h.id)
+        if (error) addLog(`⚠ ${h.symbol}: DB update failed`)
+        return { ...h, currentPrice: price, dividendYield: divYield, annualFee: annualFee }
       }))
       updated.push(...results)
-      await delay(300)  // brief pause between batches
+      await delay(300)
     }
     setHoldings(updated)
 
@@ -375,14 +385,16 @@ export default function App() {
       return { ...t, totalCostTxn, currentVal, pnl: t.type === 'buy' ? currentVal - totalCostTxn : (t.qty * t.price) - t.fee }
     })
 
-    // ETF exposure look-through
+    // ETF exposure look-through using ETF_DATA (resolves aliases)
     const expMap = {}
     rows.filter(r => r.type === 'stock').forEach(r => {
       if (!expMap[r.symbol]) expMap[r.symbol] = { name: r.name, directEUR: 0, etfBreakdown: {} }
       expMap[r.symbol].directEUR += r.value
     })
     rows.filter(r => r.type === 'etf').forEach(r => {
-      const comp = ETF_HOLDINGS[r.symbol]; if (!comp) return
+      const etfKey = resolveEtf(r.symbol)
+      const comp   = etfKey ? ETF_DATA[etfKey]?.holdings : null
+      if (!comp) return
       comp.forEach(({ symbol, name, weight }) => {
         const imp = r.value * (weight / 100)
         if (!expMap[symbol]) expMap[symbol] = { name, directEUR: 0, etfBreakdown: {} }
@@ -395,6 +407,21 @@ export default function App() {
       return { symbol, name: d.name, directEUR: d.directEUR, etfBreakdown: d.etfBreakdown, etfTotalEUR: etfT, totalEUR: tot, totalPct: tv ? (tot / tv) * 100 : 0, directPct: tv ? (d.directEUR / tv) * 100 : 0 }
     }).sort((a, b) => b.totalEUR - a.totalEUR)
 
+    // ETF sector breakdown — aggregate sectors across all ETFs in portfolio
+    const etfSectorMap = {}
+    rows.filter(r => r.type === 'etf').forEach(r => {
+      const etfKey = resolveEtf(r.symbol)
+      const sectors = etfKey ? ETF_DATA[etfKey]?.sectors : null
+      if (!sectors) return
+      Object.entries(sectors).forEach(([sector, pct]) => {
+        const impliedEUR = r.value * (pct / 100)
+        etfSectorMap[sector] = (etfSectorMap[sector] || 0) + impliedEUR
+      })
+    })
+    const etfSectorData = Object.entries(etfSectorMap)
+      .map(([name, value]) => ({ name, value, pct: tv ? (value / tv * 100).toFixed(1) : '0' }))
+      .sort((a, b) => b.value - a.value)
+
     return {
       rows, totalValue: tv, totalCost: tc, totalGain: tg, totalGainPct: tc ? (tg / tc) * 100 : 0,
       totalAnnCost: tac, totalAnnDiv: tad, netAnnIncome: tad - tac,
@@ -405,7 +432,8 @@ export default function App() {
       avgVol:  rows.reduce((s, r) => s + Math.abs(r.gainPct), 0) / rows.length,
       concentration: alloc.length ? Math.max(...alloc.map(a => parseFloat(a.pct))) : 0,
       txnRows, totalTxnFees: txns.reduce((s, t) => s + (t.fee || 0), 0),
-      exposureRows, etfSymbols: rows.filter(r => r.type === 'etf' && ETF_HOLDINGS[r.symbol]).map(r => r.symbol)
+      exposureRows, etfSectorData,
+      etfSymbols: rows.filter(r => r.type === 'etf' && resolveEtf(r.symbol)).map(r => r.symbol)
     }
   }, [holdings, txns])
 
@@ -592,7 +620,9 @@ export default function App() {
                         <Td style={{ color: r.gain >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{fmtE(r.gain)}</Td>
                         <Td style={{ color: r.gainPct >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{pct(r.gainPct)}</Td>
                         <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{r.annualFee}%</Td>
-                        <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{r.dividendYield}%</Td>
+                        <Td style={{ color: 'var(--accent)', fontSize: 11 }}>
+                          {r.dividendYield > 0 ? `${r.dividendYield}%` : <span style={{ color: 'var(--muted)' }}>—</span>}
+                        </Td>
                         <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{fmtE(r.annCost)}</Td>
                         <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{fmtE(r.annDiv)}</Td>
                         <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500, fontSize: 11 }}>{fmtE(net)}</Td>
@@ -634,6 +664,9 @@ export default function App() {
                 ))}
               </div>
               <Card>
+                <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginBottom: 10 }}>
+                  💡 TER (annual fee) for known ETFs is auto-filled from curated data · Dividend yield fetched live from Yahoo Finance
+                </div>
                 <SLabel text="Per Holding Income" />
                 <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
@@ -745,7 +778,8 @@ export default function App() {
           {tab === 'exposure' && (
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ padding: '9px 13px', background: '#0d1a2a', border: '1px solid #1e3a5f', borderRadius: 8, fontSize: 11, color: '#7ab3d4', fontFamily: 'DM Mono' }}>
-                ℹ ETF look-through for {C.etfSymbols.join(', ') || 'your ETFs'} using approximate real top-holdings weights.
+                ℹ ETF look-through for {C.etfSymbols.join(', ') || 'your ETFs'} using curated top-holdings & sector data.
+              {C.etfSymbols.length === 0 && ' Add ETFs to see exposure analysis.'}
               </div>
               <Card>
                 <SLabel text="Top 12 Exposures — Total Portfolio Weight" />
@@ -801,6 +835,28 @@ export default function App() {
                   </tbody>
                 </table></div>
               </Card>
+
+            {/* ETF sector breakdown */}
+            {C.etfSectorData.length > 0 && (
+              <Card>
+                <SLabel text="ETF Sector Exposure (implied by ETF holdings)" />
+                <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginBottom: 10 }}>
+                  Estimated sector weights based on known ETF compositions · Direct stocks shown separately
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 8 }}>
+                  {C.etfSectorData.map((s, i) => (
+                    <div key={s.name} style={{ padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: 2, background: COLORS[i % COLORS.length] }} />
+                        <span style={{ fontSize: 11, fontWeight: 600 }}>{s.name}</span>
+                      </div>
+                      <div style={{ fontFamily: 'DM Mono', fontSize: 15, color: COLORS[i % COLORS.length] }}>{fmtE(s.value)}</div>
+                      <div style={{ fontFamily: 'DM Mono', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{s.pct}% of portfolio</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
             </div>
           )}
 
