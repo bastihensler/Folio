@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { sb, ETF_HOLDINGS, COLORS, delay, fetchPrice, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB_KEY, FINNHUB } from './config.js'
+import { sb, ETF_HOLDINGS, COLORS, delay, fetchPrice, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB } from './config.js'
 import { Card, SLabel, Btn, FLabel, Inp, Sel, Modal, thS, Td, fmtE, fmtN, pct } from './ui.jsx'
 import AuthScreen from './AuthScreen.jsx'
 
@@ -17,7 +17,9 @@ export default function App() {
   const [fetchStatus,   setFetchStatus]   = useState('idle')
   const [fetchLog,      setFetchLog]      = useState([])
   const [lastUpdated,   setLastUpdated]   = useState(null)
-  const [perfData,      setPerfData]      = useState([])
+  const [perfData,      setPerfData]      = useState(() => {
+    try { const c = localStorage.getItem('folio_perf'); return c ? JSON.parse(c) : [] } catch { return [] }
+  })
   const [showAddH,      setShowAddH]      = useState(false)
   const [showAddT,      setShowAddT]      = useState(false)
   const [showProfile,   setShowProfile]   = useState(false)
@@ -27,9 +29,8 @@ export default function App() {
   const [isinLookup,    setIsinLookup]    = useState('idle')
   const fileRef = useRef()
 
-  const eurRate = fxRates.EUR || 0.92
-  // u2e converts internal USD values → EUR for display
-  const u2e = v => (v || 0) / eurRate
+  // All values stored and displayed in EUR natively — no conversion needed
+  const usdPerEur = fxRates.USD || 1.087  // for header display only
 
   // ── Auth ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -76,7 +77,7 @@ export default function App() {
       setFxRates(freshRates)
       setLiveEur(true)
       activeFxRates = freshRates  // Fix #1: use fresh rates immediately, not stale state
-      addLog(`✓ 1 USD = ${freshRates.EUR?.toFixed(4)} EUR · GBP ${freshRates.GBP?.toFixed(4)} · CHF ${freshRates.CHF?.toFixed(4)}`)
+      addLog(`✓ 1 EUR = ${freshRates.USD?.toFixed(4)} USD · GBP ${(freshRates.GBP ? (1/freshRates.GBP).toFixed(4) : '?')} · CHF ${(freshRates.CHF ? (1/freshRates.CHF).toFixed(4) : '?')}`)
     } else {
       addLog('⚠ FX fetch failed — using fallback rates')
     }
@@ -92,18 +93,18 @@ export default function App() {
         addLog(`Fetching ${h.symbol}…`)
         const price = await fetchPrice(h.symbol, h.type, activeFxRates)
 
-        // Fix #7: use amountUSD from dividends (already converted in fetchDividends)
+        // Use amountEUR from dividends (already converted to EUR in fetchDividends)
         let divYield = h.dividendYield
         if (h.type === 'stock' && price) {
           const divs = await fetchDividends(h.symbol, activeFxRates)
           if (divs.length > 0) {
-            const annualUSD = divs.reduce((s, d) => s + (d.amountUSD || 0), 0)
-            divYield = parseFloat(((annualUSD / price) * 100).toFixed(2))
+            const annualEUR = divs.reduce((s, d) => s + (d.amountEUR || 0), 0)
+            divYield = parseFloat(((annualEUR / price) * 100).toFixed(2))
           }
         }
 
         if (price) {
-          addLog(`✓ ${h.symbol}: $${price.toFixed(2)} (€${(u2e(price)).toFixed(2)})`)
+          addLog(`✓ ${h.symbol}: €${price.toFixed(2)}`)
           const { error } = await sb.from('holdings')
             .update({ current_price: price, dividend_yield: divYield, updated_at: new Date().toISOString() })
             .eq('id', h.id)
@@ -148,7 +149,11 @@ export default function App() {
           ? { month: new Date(md).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }), value: val }
           : null
       }).filter(Boolean)
-      if (newPerf.length >= 2) { setPerfData(newPerf); addLog(`✓ History: ${newPerf.length} months`) }
+      if (newPerf.length >= 2) {
+        setPerfData(newPerf)
+        try { localStorage.setItem('folio_perf', JSON.stringify(newPerf)) } catch {}
+        addLog(`✓ History: ${newPerf.length} months`)
+      }
     }
 
     setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
@@ -205,7 +210,7 @@ export default function App() {
 
         setNh(h => ({ ...h, symbol: sym, name, type, sector }))
         const price = await fetchPrice(sym, type, fxRates)
-        // Fix #10: price from fetchPrice is in USD — store as USD
+        // Price is already in EUR from fetchPrice
         if (price) setNh(h => ({ ...h, currentPrice: String(price) }))
         setIsinResults(results.slice(0, 6))
         setIsinLookup('found')
@@ -229,14 +234,14 @@ export default function App() {
 
   const addHolding = async () => {
     if ((!nh.symbol && !nh.isin) || !nh.qty || !nh.avgCostEur) return
-    const sym = nh.symbol.toUpperCase()
-    // avgCostEur is in EUR — convert to USD for internal storage
-    const avgCostUSD = +nh.avgCostEur / eurRate
-    // Fix #10: currentPrice field in modal shows USD (auto-fetched) — use as-is
+    const sym = nh.symbol.trim().toUpperCase()
+    if (!sym) { alert('Please enter a ticker symbol or use ISIN lookup'); return }
+    // avgCostEur is already in EUR — store directly
+    const avgCostEUR = +nh.avgCostEur
     let price = nh.currentPrice ? +nh.currentPrice : await fetchPrice(sym, nh.type, fxRates) || 0
     const row = {
       user_id: user.id, symbol: sym, name: nh.name || sym, type: nh.type,
-      qty: +nh.qty, avg_cost: avgCostUSD, current_price: price,
+      qty: +nh.qty, avg_cost: avgCostEUR, current_price: price,
       sector: nh.sector || 'Other', annual_fee: +nh.annualFee, dividend_yield: +nh.dividendYield
     }
     // Fix #9: check for DB errors
@@ -244,7 +249,7 @@ export default function App() {
     if (error) { alert(`Failed to save holding: ${error.message}`); return }
     setHoldings(hs => [...hs, {
       id: data.id, symbol: sym, name: nh.name || sym, type: nh.type,
-      qty: +nh.qty, avgCost: avgCostUSD, currentPrice: price,
+      qty: +nh.qty, avgCost: avgCostEUR, currentPrice: price,
       sector: nh.sector || 'Other', annualFee: +nh.annualFee, dividendYield: +nh.dividendYield
     }])
     resetAddHolding()
@@ -262,10 +267,8 @@ export default function App() {
 
   const addTxn = async () => {
     if (!nt.symbol || !nt.qty || !nt.priceEur) return
-    // Fix #2: transaction price entered in EUR — convert to USD for storage
-    const priceUSD = +nt.priceEur / eurRate
-    const feeUSD   = +nt.fee / eurRate
-    const t = { ...nt, qty: +nt.qty, price: priceUSD, fee: feeUSD, symbol: nt.symbol.toUpperCase() }
+    // Price and fee entered and stored in EUR
+    const t = { ...nt, qty: +nt.qty, price: +nt.priceEur, fee: +nt.fee, symbol: nt.symbol.toUpperCase() }
     // Fix #12: check for DB error before updating state
     const { data, error } = await sb.from('transactions')
       .insert({ user_id: user.id, date: t.date, symbol: t.symbol, type: t.type, qty: t.qty, price: t.price, fee: t.fee, note: t.note || '' })
@@ -302,11 +305,10 @@ export default function App() {
           const vals = line.split(',').map(v => v.trim())
           const row  = {}; headers.forEach((h, i) => row[h] = vals[i])
           if (!row.symbol || !row.qty) continue
-          // CSV avg cost assumed to be in EUR — convert to USD
-          const avgCostUSD = (+row.avgcost || 0) / eurRate
+          // CSV avg cost is in EUR — store directly
           const rec = {
             user_id: user.id, symbol: row.symbol.toUpperCase(), name: row.name || row.symbol,
-            type: row.type || 'stock', qty: +row.qty || 0, avg_cost: avgCostUSD,
+            type: row.type || 'stock', qty: +row.qty || 0, avg_cost: +row.avgcost || 0,
             current_price: +row.currentprice || 0, sector: row.sector || 'Other',
             annual_fee: +row.annualfee || 0, dividend_yield: +row.dividendyield || 0
           }
@@ -323,6 +325,8 @@ export default function App() {
           ? `✓ Imported ${count}, ⚠ ${errors} failed`
           : `✓ Imported ${count} holdings`
         setCsvMsg(msg); setTimeout(() => setCsvMsg(''), 4000)
+        // Auto-refresh prices for newly imported holdings
+        if (count > 0) setTimeout(() => refreshAll(), 500)
       } catch { setCsvMsg('✗ CSV parse error — check format') }
     }
     reader.readAsText(file); e.target.value = ''
@@ -374,22 +378,22 @@ export default function App() {
     // ETF exposure look-through
     const expMap = {}
     rows.filter(r => r.type === 'stock').forEach(r => {
-      if (!expMap[r.symbol]) expMap[r.symbol] = { name: r.name, directUSD: 0, etfBreakdown: {} }
-      expMap[r.symbol].directUSD += r.value
+      if (!expMap[r.symbol]) expMap[r.symbol] = { name: r.name, directEUR: 0, etfBreakdown: {} }
+      expMap[r.symbol].directEUR += r.value
     })
     rows.filter(r => r.type === 'etf').forEach(r => {
       const comp = ETF_HOLDINGS[r.symbol]; if (!comp) return
       comp.forEach(({ symbol, name, weight }) => {
         const imp = r.value * (weight / 100)
-        if (!expMap[symbol]) expMap[symbol] = { name, directUSD: 0, etfBreakdown: {} }
+        if (!expMap[symbol]) expMap[symbol] = { name, directEUR: 0, etfBreakdown: {} }
         expMap[symbol].etfBreakdown[r.symbol] = (expMap[symbol].etfBreakdown[r.symbol] || 0) + imp
       })
     })
     const exposureRows = Object.entries(expMap).map(([symbol, d]) => {
       const etfT = Object.values(d.etfBreakdown).reduce((s, v) => s + v, 0)
-      const tot  = d.directUSD + etfT
-      return { symbol, name: d.name, directUSD: d.directUSD, etfBreakdown: d.etfBreakdown, etfTotalUSD: etfT, totalUSD: tot, totalPct: tv ? (tot / tv) * 100 : 0, directPct: tv ? (d.directUSD / tv) * 100 : 0 }
-    }).sort((a, b) => b.totalUSD - a.totalUSD)
+      const tot  = d.directEUR + etfT
+      return { symbol, name: d.name, directEUR: d.directEUR, etfBreakdown: d.etfBreakdown, etfTotalEUR: etfT, totalEUR: tot, totalPct: tv ? (tot / tv) * 100 : 0, directPct: tv ? (d.directEUR / tv) * 100 : 0 }
+    }).sort((a, b) => b.totalEUR - a.totalEUR)
 
     return {
       rows, totalValue: tv, totalCost: tc, totalGain: tg, totalGainPct: tc ? (tg / tc) * 100 : 0,
@@ -428,8 +432,8 @@ export default function App() {
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', paddingRight: 8, borderRight: '1px solid var(--border)' }}>
-            1 USD = {eurRate.toFixed(4)} EUR
-            {fxRates.GBP && <span style={{ marginLeft: 6, opacity: 0.6 }}>· GBP {fxRates.GBP.toFixed(4)}</span>}
+            1 EUR = {usdPerEur.toFixed(4)} USD
+            {fxRates.GBP && <span style={{ marginLeft: 6, opacity: 0.6 }}>· GBP {(1/fxRates.GBP).toFixed(4)}</span>}
             {liveEur
               ? <span style={{ color: 'var(--accent)', marginLeft: 4 }}>● live</span>
               : <span style={{ color: 'var(--yellow)', marginLeft: 4 }}>● fallback</span>}
@@ -484,11 +488,11 @@ export default function App() {
           {/* ── KPI strip ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 9, marginBottom: 18 }}>
             {[
-              { l: 'Portfolio Value',  v: fmtE(u2e(C.totalValue)),    s: null,                c: false },
-              { l: 'Total Return',     v: fmtE(u2e(C.totalGain)),     s: pct(C.totalGainPct), c: C.totalGain >= 0 ? 'var(--green)' : 'var(--red)' },
-              { l: 'Annual Costs',     v: fmtE(u2e(C.totalAnnCost)),  s: 'fees & TER p.a.',   c: 'var(--yellow)' },
-              { l: 'Annual Dividends', v: fmtE(u2e(C.totalAnnDiv)),   s: 'est. p.a.',         c: 'var(--accent)' },
-              { l: 'Net Income p.a.',  v: fmtE(u2e(C.netAnnIncome)),  s: 'divs − fees',       c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)' },
+              { l: 'Portfolio Value',  v: fmtE(C.totalValue),    s: null,                c: false },
+              { l: 'Total Return',     v: fmtE(C.totalGain),     s: pct(C.totalGainPct), c: C.totalGain >= 0 ? 'var(--green)' : 'var(--red)' },
+              { l: 'Annual Costs',     v: fmtE(C.totalAnnCost),  s: 'fees & TER p.a.',   c: 'var(--yellow)' },
+              { l: 'Annual Dividends', v: fmtE(C.totalAnnDiv),   s: 'est. p.a.',         c: 'var(--accent)' },
+              { l: 'Net Income p.a.',  v: fmtE(C.netAnnIncome),  s: 'divs − fees',       c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)' },
               { l: 'Positions',        v: `${holdings.length}`,        s: `${txns.length} trades`, c: false },
             ].map((k, i) => (
               <Card key={i} style={{ padding: '12px 14px' }}>
@@ -511,7 +515,7 @@ export default function App() {
                       ℹ Based on current prices applied to historical quantities
                     </div>
                     <ResponsiveContainer width="100%" height={180}>
-                      <AreaChart data={perfData.map(d => ({ ...d, eur: u2e(d.value) }))}>
+                      <AreaChart data={perfData.map(d => ({ ...d, eur: d.value }))}>
                         <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#00d4aa" stopOpacity={0.2} /><stop offset="95%" stopColor="#00d4aa" stopOpacity={0} /></linearGradient></defs>
                         <XAxis dataKey="month" tick={{ fill: '#5a7a96', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fill: '#5a7a96', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} tickFormatter={v => '€' + Math.round(v / 1000) + 'k'} />
@@ -534,7 +538,7 @@ export default function App() {
                     <Pie data={C.typeData} cx="50%" cy="50%" innerRadius={42} outerRadius={65} paddingAngle={3} dataKey="value">
                       {C.typeData.map((_, i) => <Cell key={i} fill={COLORS[i]} strokeWidth={0} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(u2e(v))]} />
+                    <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(v)]} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -556,7 +560,7 @@ export default function App() {
                           <div><span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500 }}>{r.symbol}</span><span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>{r.name}</span></div>
                           <div style={{ textAlign: 'right' }}>
                             <div style={{ color: r.gainPct >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{pct(r.gainPct)}</div>
-                            <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{fmtE(u2e(r.gain))}</div>
+                            <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{fmtE(r.gain)}</div>
                           </div>
                         </div>
                       ))}
@@ -582,29 +586,29 @@ export default function App() {
                         <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
                         <Td><span style={{ fontSize: 9, padding: '2px 5px', borderRadius: 3, background: r.type === 'crypto' ? '#1a1000' : r.type === 'etf' ? '#001a2e' : '#0d1f0d', color: r.type === 'crypto' ? 'var(--accent2)' : r.type === 'etf' ? 'var(--blue)' : 'var(--green)', fontFamily: 'DM Mono', textTransform: 'uppercase' }}>{r.type}</span></Td>
                         <Td style={{ fontSize: 11 }}>{fmtN(r.qty, r.type === 'crypto' ? 4 : 2)}</Td>
-                        <Td style={{ fontSize: 11 }}>{fmtE(u2e(r.avgCost))}</Td>
-                        <Td style={{ fontSize: 11 }}>{fmtE(u2e(r.currentPrice))}</Td>
-                        <Td style={{ fontWeight: 500 }}>{fmtE(u2e(r.value))}</Td>
-                        <Td style={{ color: r.gain >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{fmtE(u2e(r.gain))}</Td>
+                        <Td style={{ fontSize: 11 }}>{fmtE(r.avgCost)}</Td>
+                        <Td style={{ fontSize: 11 }}>{fmtE(r.currentPrice)}</Td>
+                        <Td style={{ fontWeight: 500 }}>{fmtE(r.value)}</Td>
+                        <Td style={{ color: r.gain >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{fmtE(r.gain)}</Td>
                         <Td style={{ color: r.gainPct >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{pct(r.gainPct)}</Td>
                         <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{r.annualFee}%</Td>
                         <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{r.dividendYield}%</Td>
-                        <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{fmtE(u2e(r.annCost))}</Td>
-                        <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{fmtE(u2e(r.annDiv))}</Td>
-                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500, fontSize: 11 }}>{fmtE(u2e(net))}</Td>
+                        <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{fmtE(r.annCost)}</Td>
+                        <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{fmtE(r.annDiv)}</Td>
+                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500, fontSize: 11 }}>{fmtE(net)}</Td>
                         <Td><button onClick={() => deleteHolding(r.id)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted)', cursor: 'pointer', borderRadius: 3, padding: '2px 5px', fontSize: 10 }}>✕</button></Td>
                       </tr>
                     )})}
                   </tbody>
                   <tfoot><tr style={{ borderTop: '2px solid var(--border2)' }}>
                     <td colSpan={6} style={{ padding: '8px', fontFamily: 'DM Mono', fontSize: 10, color: 'var(--muted)' }}>TOTAL</td>
-                    <Td style={{ fontWeight: 500 }}>{fmtE(u2e(C.totalValue))}</Td>
-                    <Td style={{ color: C.totalGain >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(u2e(C.totalGain))}</Td>
+                    <Td style={{ fontWeight: 500 }}>{fmtE(C.totalValue)}</Td>
+                    <Td style={{ color: C.totalGain >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(C.totalGain)}</Td>
                     <Td style={{ color: C.totalGainPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{pct(C.totalGainPct)}</Td>
                     <td colSpan={2} />
-                    <Td style={{ color: 'var(--yellow)' }}>{fmtE(u2e(C.totalAnnCost))}</Td>
-                    <Td style={{ color: 'var(--accent)' }}>{fmtE(u2e(C.totalAnnDiv))}</Td>
-                    <Td style={{ color: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{fmtE(u2e(C.netAnnIncome))}</Td>
+                    <Td style={{ color: 'var(--yellow)' }}>{fmtE(C.totalAnnCost)}</Td>
+                    <Td style={{ color: 'var(--accent)' }}>{fmtE(C.totalAnnDiv)}</Td>
+                    <Td style={{ color: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{fmtE(C.netAnnIncome)}</Td>
                     <td />
                   </tr></tfoot>
                 </table>
@@ -617,10 +621,10 @@ export default function App() {
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 9 }}>
                 {[
-                  { l: 'Annual Dividends', v: fmtE(u2e(C.totalAnnDiv)),       c: 'var(--accent)',  s: 'est. gross' },
-                  { l: 'Annual Fees',      v: fmtE(u2e(C.totalAnnCost)),      c: 'var(--yellow)',  s: 'TER drag' },
-                  { l: 'Net Annual',       v: fmtE(u2e(C.netAnnIncome)),      c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', s: 'divs − fees' },
-                  { l: 'Monthly Net',      v: fmtE(u2e(C.netAnnIncome / 12)), c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', s: 'avg per month' },
+                  { l: 'Annual Dividends', v: fmtE(C.totalAnnDiv),       c: 'var(--accent)',  s: 'est. gross' },
+                  { l: 'Annual Fees',      v: fmtE(C.totalAnnCost),      c: 'var(--yellow)',  s: 'TER drag' },
+                  { l: 'Net Annual',       v: fmtE(C.netAnnIncome),      c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', s: 'divs − fees' },
+                  { l: 'Monthly Net',      v: fmtE(C.netAnnIncome / 12), c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', s: 'avg per month' },
                 ].map((k, i) => (
                   <Card key={i} style={{ padding: '12px 14px' }}>
                     <div style={{ fontSize: 8, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 6 }}>{k.l}</div>
@@ -639,13 +643,13 @@ export default function App() {
                     {C.rows.map(r => { const net = r.annDiv - r.annCost; return (
                       <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                         <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
-                        <Td>{fmtE(u2e(r.value))}</Td>
+                        <Td>{fmtE(r.value)}</Td>
                         <Td style={{ color: 'var(--yellow)' }}>{r.annualFee}%</Td>
-                        <Td style={{ color: 'var(--yellow)' }}>{fmtE(u2e(r.annCost))}</Td>
+                        <Td style={{ color: 'var(--yellow)' }}>{fmtE(r.annCost)}</Td>
                         <Td style={{ color: 'var(--accent)' }}>{r.dividendYield}%</Td>
-                        <Td style={{ color: 'var(--accent)' }}>{fmtE(u2e(r.annDiv))}</Td>
-                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{fmtE(u2e(net))}</Td>
-                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(u2e(net / 12))}</Td>
+                        <Td style={{ color: 'var(--accent)' }}>{fmtE(r.annDiv)}</Td>
+                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{fmtE(net)}</Td>
+                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(net / 12)}</Td>
                       </tr>
                     )})}
                   </tbody>
@@ -662,7 +666,7 @@ export default function App() {
                   { l: 'Total Transactions', v: txns.length,                                  s: 'all time' },
                   { l: 'Buy Orders',         v: txns.filter(t => t.type === 'buy').length,    s: 'purchases', c: 'var(--green)' },
                   { l: 'Sell Orders',        v: txns.filter(t => t.type === 'sell').length,   s: 'exits',     c: 'var(--red)' },
-                  { l: 'Total Fees',         v: fmtE(u2e(C.totalTxnFees)),                    s: 'brokerage', c: 'var(--yellow)' },
+                  { l: 'Total Fees',         v: fmtE(C.totalTxnFees),                    s: 'brokerage', c: 'var(--yellow)' },
                 ].map((k, i) => (
                   <Card key={i} style={{ padding: '12px 14px' }}>
                     <div style={{ fontSize: 8, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>{k.l}</div>
@@ -684,11 +688,11 @@ export default function App() {
                         <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
                         <Td><span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, fontFamily: 'DM Mono', textTransform: 'uppercase', background: r.type === 'buy' ? '#0d2a1f' : '#2d0a12', color: r.type === 'buy' ? 'var(--green)' : 'var(--red)' }}>{r.type}</span></Td>
                         <Td style={{ fontSize: 11 }}>{r.qty}</Td>
-                        <Td style={{ fontSize: 11 }}>{fmtE(u2e(r.price))}</Td>
-                        <Td style={{ fontSize: 11, color: 'var(--yellow)' }}>{fmtE(u2e(r.fee))}</Td>
-                        <Td style={{ fontSize: 11 }}>{fmtE(u2e(r.totalCostTxn))}</Td>
-                        <Td style={{ fontSize: 11 }}>{r.currentVal ? fmtE(u2e(r.currentVal)) : '—'}</Td>
-                        <Td style={{ fontWeight: 500, color: r.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(u2e(r.pnl))}</Td>
+                        <Td style={{ fontSize: 11 }}>{fmtE(r.price)}</Td>
+                        <Td style={{ fontSize: 11, color: 'var(--yellow)' }}>{fmtE(r.fee)}</Td>
+                        <Td style={{ fontSize: 11 }}>{fmtE(r.totalCostTxn)}</Td>
+                        <Td style={{ fontSize: 11 }}>{r.currentVal ? fmtE(r.currentVal) : '—'}</Td>
+                        <Td style={{ fontWeight: 500, color: r.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(r.pnl)}</Td>
                         <Td style={{ fontSize: 10, color: 'var(--muted)', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.note || '—'}</Td>
                         <Td><button onClick={() => deleteTxn(r.id)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted)', cursor: 'pointer', borderRadius: 3, padding: '2px 5px', fontSize: 10 }}>✕</button></Td>
                       </tr>
@@ -709,7 +713,7 @@ export default function App() {
                     <Pie data={C.allocationData} cx="50%" cy="50%" outerRadius={90} paddingAngle={2} dataKey="value">
                       {C.allocationData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} strokeWidth={0} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(u2e(v))]} />
+                    <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(v)]} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
@@ -724,7 +728,7 @@ export default function App() {
               <Card>
                 <SLabel text="Holdings by Value (€)" />
                 <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={[...C.rows].sort((a, b) => b.value - a.value).slice(0, 8).map(r => ({ symbol: r.symbol, eur: u2e(r.value) }))} layout="vertical" margin={{ left: 6, right: 18 }}>
+                  <BarChart data={[...C.rows].sort((a, b) => b.value - a.value).slice(0, 8).map(r => ({ symbol: r.symbol, eur: r.value }))} layout="vertical" margin={{ left: 6, right: 18 }}>
                     <XAxis type="number" tick={{ fill: '#5a7a96', fontSize: 9, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} tickFormatter={v => '€' + Math.round(v / 1000) + 'k'} />
                     <YAxis type="category" dataKey="symbol" tick={{ fill: '#e8edf2', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={36} />
                     <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(v)]} />
@@ -772,16 +776,16 @@ export default function App() {
                   </tr></thead>
                   <tbody>
                     {C.exposureRows.map((r, i) => {
-                      const multi = (r.directUSD > 0 ? 1 : 0) + Object.keys(r.etfBreakdown).length > 1
+                      const multi = (r.directEUR > 0 ? 1 : 0) + Object.keys(r.etfBreakdown).length > 1
                       return (
                         <tr key={r.symbol} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                           <Td style={{ color: 'var(--muted)', fontSize: 10 }}>{i + 1}</Td>
                           <Td style={{ fontWeight: 600, color: r.totalPct > 5 ? 'var(--yellow)' : 'var(--text)' }}>{r.symbol}</Td>
                           <Td style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{r.name}</Td>
-                          <Td style={{ color: r.directUSD > 0 ? 'var(--accent)' : 'var(--border2)' }}>{r.directUSD > 0 ? fmtE(u2e(r.directUSD)) : '—'}</Td>
+                          <Td style={{ color: r.directEUR > 0 ? 'var(--accent)' : 'var(--border2)' }}>{r.directEUR > 0 ? fmtE(r.directEUR) : '—'}</Td>
                           <Td style={{ color: r.directPct > 0 ? 'var(--accent)' : 'var(--border2)' }}>{r.directPct > 0 ? fmtN(r.directPct) + '%' : '—'}</Td>
-                          {C.etfSymbols.map(etf => <Td key={etf} style={{ color: r.etfBreakdown[etf] ? 'var(--blue)' : 'var(--border2)' }}>{r.etfBreakdown[etf] ? fmtE(u2e(r.etfBreakdown[etf])) : '—'}</Td>)}
-                          <Td style={{ fontWeight: 600 }}>{fmtE(u2e(r.totalUSD))}</Td>
+                          {C.etfSymbols.map(etf => <Td key={etf} style={{ color: r.etfBreakdown[etf] ? 'var(--blue)' : 'var(--border2)' }}>{r.etfBreakdown[etf] ? fmtE(r.etfBreakdown[etf]) : '—'}</Td>)}
+                          <Td style={{ fontWeight: 600 }}>{fmtE(r.totalEUR)}</Td>
                           <Td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                               <div style={{ width: 38, height: 4, background: 'var(--surface2)', borderRadius: 2, overflow: 'hidden' }}>
@@ -827,7 +831,7 @@ export default function App() {
                       <div key={r.id} style={{ padding: '9px 11px', background: bg, borderRadius: 7, border: `1px solid ${color}22` }}>
                         <div style={{ fontFamily: 'DM Mono', fontSize: 11, fontWeight: 500 }}>{r.symbol}</div>
                         <div style={{ fontFamily: 'DM Mono', fontSize: 15, color, marginTop: 2 }}>{pct(r.gainPct)}</div>
-                        <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1 }}>{fmtE(u2e(r.value))}</div>
+                        <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1 }}>{fmtE(r.value)}</div>
                       </div>
                     )
                   })}
@@ -852,7 +856,7 @@ export default function App() {
             {isinLookup === 'found' && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'DM Mono', marginBottom: 6 }}>
-                  ✓ {nh.name} ({nh.symbol}){nh.currentPrice ? ` · €${(+nh.currentPrice / eurRate).toFixed(2)}` : ''}
+                  ✓ {nh.name} ({nh.symbol}){nh.currentPrice ? ` · €${(+nh.currentPrice).toFixed(2)}` : ''}
                 </div>
                 {isinResults.length > 1 && (
                   <div>
@@ -880,12 +884,12 @@ export default function App() {
                 <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', fontFamily: 'DM Mono', fontSize: 12, pointerEvents: 'none' }}>€</span>
                 <Inp value={nh.avgCostEur} onChange={e => setNh(h => ({ ...h, avgCostEur: e.target.value }))} placeholder="155.00" type="number" style={{ paddingLeft: 22 }} />
               </div>
-              {nh.avgCostEur && <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 3 }}>≈ ${(+nh.avgCostEur / eurRate).toFixed(2)} USD stored internally</div>}
+              {nh.avgCostEur && <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 3 }}>stored directly in EUR</div>}
             </div>
             <div><FLabel>Sector</FLabel><Inp value={nh.sector} onChange={e => setNh(h => ({ ...h, sector: e.target.value }))} placeholder="Technology" /></div>
             <div><FLabel>Annual Fee % (TER)</FLabel><Inp value={nh.annualFee} onChange={e => setNh(h => ({ ...h, annualFee: e.target.value }))} placeholder="0.03" type="number" /></div>
             <div><FLabel>Dividend Yield %</FLabel><Inp value={nh.dividendYield} onChange={e => setNh(h => ({ ...h, dividendYield: e.target.value }))} placeholder="1.3" type="number" /></div>
-            <div><FLabel>Current Price (leave blank)</FLabel><Inp value={nh.currentPrice} onChange={e => setNh(h => ({ ...h, currentPrice: e.target.value }))} placeholder="auto-fetched in USD" type="number" /></div>
+            <div><FLabel>Huidige koers (€, leeg laten)</FLabel><Inp value={nh.currentPrice} onChange={e => setNh(h => ({ ...h, currentPrice: e.target.value }))} placeholder="automatisch ophalen" type="number" /></div>
           </div>
           <div style={{ marginTop: 10 }}><FLabel>Type</FLabel>
             <Sel value={nh.type} onChange={e => setNh(h => ({ ...h, type: e.target.value }))}>
@@ -895,7 +899,7 @@ export default function App() {
             </Sel>
           </div>
           <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 8 }}>
-            💡 ISIN lookup auto-fills symbol · Aankoopprijs in EUR · Current price fetched automatically
+            💡 ISIN auto-fills symbol · Alle prijzen in EUR · Koers wordt automatisch opgehaald
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
             <Btn label="Cancel" onClick={() => { setShowAddH(false); resetAddHolding() }} style={{ flex: 1 }} />
