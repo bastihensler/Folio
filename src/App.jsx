@@ -107,15 +107,46 @@ export default function App() {
   }
 
   // Add Holding
-  const [nh, setNh] = useState({ symbol: '', name: '', type: 'stock', qty: '', avgCost: '', currentPrice: '', sector: 'Technology', annualFee: '0', dividendYield: '0' })
+  const [nh, setNh] = useState({ isin: '', symbol: '', name: '', type: 'stock', qty: '', avgCostEur: '', currentPrice: '', sector: 'Technology', annualFee: '0', dividendYield: '0' })
+  const [isinLookup, setIsinLookup] = useState('idle')
+
+  const lookupISIN = async () => {
+    if (!nh.isin || nh.isin.length < 10) return
+    setIsinLookup('loading')
+    try {
+      const r = await fetch('https://api.openfigi.com/v3/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([{ idType: 'ID_ISIN', idValue: nh.isin.toUpperCase() }])
+      })
+      const d = await r.json()
+      const match = d?.[0]?.data?.[0]
+      if (match) {
+        const sym = match.ticker || ''
+        const name = match.name || ''
+        const type = match.securityType2 === 'ETF' ? 'etf' : match.securityType2 === 'Crypto' ? 'crypto' : 'stock'
+        setNh(h => ({ ...h, symbol: sym, name, type }))
+        const price = await fetchPrice(sym, type)
+        if (price) setNh(h => ({ ...h, currentPrice: String(price) }))
+        setIsinLookup('found')
+      } else {
+        setIsinLookup('notfound')
+      }
+    } catch {
+      setIsinLookup('notfound')
+    }
+  }
+
   const addHolding = async () => {
-    if (!nh.symbol || !nh.qty || !nh.avgCost) return
+    if ((!nh.symbol && !nh.isin) || !nh.qty || !nh.avgCostEur) return
     const sym = nh.symbol.toUpperCase()
+    const avgCostUSD = +nh.avgCostEur / eurRate
     let price = nh.currentPrice ? +nh.currentPrice : await fetchPrice(sym, nh.type) || 0
-    const row = { user_id: user.id, symbol: sym, name: nh.name || sym, type: nh.type, qty: +nh.qty, avg_cost: +nh.avgCost, current_price: price, sector: nh.sector || 'Other', annual_fee: +nh.annualFee, dividend_yield: +nh.dividendYield }
+    const row = { user_id: user.id, symbol: sym, name: nh.name || sym, type: nh.type, qty: +nh.qty, avg_cost: avgCostUSD, current_price: price, sector: nh.sector || 'Other', annual_fee: +nh.annualFee, dividend_yield: +nh.dividendYield }
     const { data } = await sb.from('holdings').insert(row).select().single()
-    if (data) setHoldings(hs => [...hs, { id: data.id, symbol: sym, name: nh.name || sym, type: nh.type, qty: +nh.qty, avgCost: +nh.avgCost, currentPrice: price, sector: nh.sector || 'Other', annualFee: +nh.annualFee, dividendYield: +nh.dividendYield }])
-    setNh({ symbol: '', name: '', type: 'stock', qty: '', avgCost: '', currentPrice: '', sector: 'Technology', annualFee: '0', dividendYield: '0' })
+    if (data) setHoldings(hs => [...hs, { id: data.id, symbol: sym, name: nh.name || sym, type: nh.type, qty: +nh.qty, avgCost: avgCostUSD, currentPrice: price, sector: nh.sector || 'Other', annualFee: +nh.annualFee, dividendYield: +nh.dividendYield }])
+    setNh({ isin: '', symbol: '', name: '', type: 'stock', qty: '', avgCostEur: '', currentPrice: '', sector: 'Technology', annualFee: '0', dividendYield: '0' })
+    setIsinLookup('idle')
     setShowAddH(false)
   }
 
@@ -623,22 +654,83 @@ export default function App() {
 
       {/* Add Holding Modal */}
       {showAddH && (
-        <Modal title="Add Holding" onClose={() => setShowAddH(false)}>
+        <Modal title="Add Holding" onClose={() => { setShowAddH(false); setIsinLookup('idle') }}>
+
+          {/* ISIN lookup */}
+          <div style={{ marginBottom: 16, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border2)' }}>
+            <FLabel>ISIN (optional — auto-fills symbol &amp; name)</FLabel>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Inp
+                value={nh.isin}
+                onChange={e => { setNh(h => ({ ...h, isin: e.target.value })); setIsinLookup('idle') }}
+                placeholder="e.g. US0378331005"
+                style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '1px' }}
+              />
+              <button
+                onClick={lookupISIN}
+                disabled={isinLookup === 'loading' || nh.isin.length < 10}
+                style={{ padding: '8px 14px', background: '#0d2a1f', border: '1px solid #00d4aa55', color: 'var(--accent)', borderRadius: 6, cursor: 'pointer', fontFamily: 'Syne', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', opacity: nh.isin.length < 10 ? 0.4 : 1 }}
+              >
+                {isinLookup === 'loading' ? '…' : '🔍 Lookup'}
+              </button>
+            </div>
+            {isinLookup === 'found' && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent)', fontFamily: 'DM Mono' }}>✓ Found: {nh.name} ({nh.symbol}){nh.currentPrice ? ` · $${parseFloat(nh.currentPrice).toFixed(2)}` : ''}</div>}
+            {isinLookup === 'notfound' && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', fontFamily: 'DM Mono' }}>⚠ Not found — enter symbol manually below</div>}
+          </div>
+
+          {/* Manual fields */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {[
-              { k: 'symbol', l: 'Symbol', ph: 'AAPL' }, { k: 'name', l: 'Full Name', ph: 'Apple Inc.' },
-              { k: 'qty', l: 'Quantity', ph: '10', t: 'number' }, { k: 'avgCost', l: 'Avg Cost (USD)', ph: '155', t: 'number' },
-              { k: 'currentPrice', l: 'Current Price (leave blank)', ph: 'auto-fetched', t: 'number' }, { k: 'sector', l: 'Sector', ph: 'Technology' },
-              { k: 'annualFee', l: 'Annual Fee % (TER)', ph: '0.03', t: 'number' }, { k: 'dividendYield', l: 'Dividend Yield %', ph: '1.3', t: 'number' },
-            ].map(f => <div key={f.k}><FLabel>{f.l}</FLabel><Inp value={nh[f.k]} onChange={e => setNh(h => ({ ...h, [f.k]: e.target.value }))} placeholder={f.ph} type={f.t || 'text'} /></div>)}
+            <div>
+              <FLabel>Symbol (ticker)</FLabel>
+              <Inp value={nh.symbol} onChange={e => setNh(h => ({ ...h, symbol: e.target.value }))} placeholder="AAPL" style={{ textTransform: 'uppercase' }} />
+            </div>
+            <div>
+              <FLabel>Full Name</FLabel>
+              <Inp value={nh.name} onChange={e => setNh(h => ({ ...h, name: e.target.value }))} placeholder="Apple Inc." />
+            </div>
+            <div>
+              <FLabel>Quantity (aantal)</FLabel>
+              <Inp value={nh.qty} onChange={e => setNh(h => ({ ...h, qty: e.target.value }))} placeholder="10" type="number" />
+            </div>
+            <div>
+              <FLabel>Gemiddelde aankoopprijs (€)</FLabel>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', fontFamily: 'DM Mono', fontSize: 12, pointerEvents: 'none' }}>€</span>
+                <Inp value={nh.avgCostEur} onChange={e => setNh(h => ({ ...h, avgCostEur: e.target.value }))} placeholder="155.00" type="number" style={{ paddingLeft: 22 }} />
+              </div>
+              {nh.avgCostEur && <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 3 }}>≈ ${(+nh.avgCostEur / eurRate).toFixed(2)} USD</div>}
+            </div>
+            <div>
+              <FLabel>Sector</FLabel>
+              <Inp value={nh.sector} onChange={e => setNh(h => ({ ...h, sector: e.target.value }))} placeholder="Technology" />
+            </div>
+            <div>
+              <FLabel>Annual Fee % (TER)</FLabel>
+              <Inp value={nh.annualFee} onChange={e => setNh(h => ({ ...h, annualFee: e.target.value }))} placeholder="0.03" type="number" />
+            </div>
+            <div>
+              <FLabel>Dividend Yield %</FLabel>
+              <Inp value={nh.dividendYield} onChange={e => setNh(h => ({ ...h, dividendYield: e.target.value }))} placeholder="1.3" type="number" />
+            </div>
+            <div>
+              <FLabel>Current Price (leave blank)</FLabel>
+              <Inp value={nh.currentPrice} onChange={e => setNh(h => ({ ...h, currentPrice: e.target.value }))} placeholder="auto-fetched" type="number" />
+            </div>
           </div>
           <div style={{ marginTop: 10 }}><FLabel>Type</FLabel>
             <Sel value={nh.type} onChange={e => setNh(h => ({ ...h, type: e.target.value }))}>
-              <option value="stock">Stock</option><option value="etf">ETF</option><option value="crypto">Crypto</option>
+              <option value="stock">Stock / Aandeel</option>
+              <option value="etf">ETF</option>
+              <option value="crypto">Crypto</option>
             </Sel>
           </div>
-          <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 8 }}>💡 Leave current price blank — fetched live from Finnhub automatically</div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}><Btn label="Cancel" onClick={() => setShowAddH(false)} style={{ flex: 1 }} /><Btn label="Add Holding" variant="accent" onClick={addHolding} style={{ flex: 1 }} /></div>
+          <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 8 }}>
+            💡 Enter ISIN to auto-fill · Aankoopprijs in EUR · Current price fetched automatically
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <Btn label="Cancel" onClick={() => { setShowAddH(false); setIsinLookup('idle') }} style={{ flex: 1 }} />
+            <Btn label="Add Holding" variant="accent" onClick={addHolding} style={{ flex: 1 }} />
+          </div>
         </Modal>
       )}
 
