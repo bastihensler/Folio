@@ -1,3 +1,13 @@
+// ── Formatting helpers ────────────────────────────────────────────────────
+// fmtE: formats a number as EUR — sign is prepended by caller if needed
+export const fmtE = (n, dec = 2) => {
+  const abs = Math.abs(n || 0).toLocaleString('de-DE', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+  return (n < 0 ? '-' : '') + '€' + abs
+}
+export const fmtN = (n, dec = 2) => (n || 0).toLocaleString('de-DE', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+export const pct  = n => (n >= 0 ? '+' : '') + (n || 0).toFixed(2) + '%'
+
+// ── UI Components ─────────────────────────────────────────────────────────
 export function Card({ children, style = {} }) {
   return <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '20px 22px', ...style }}>{children}</div>
 }
@@ -45,7 +55,3 @@ export const thS = { padding: '7px 8px', textAlign: 'left', fontSize: 9, color: 
 export function Td({ children, style = {} }) {
   return <td style={{ padding: '8px', fontFamily: 'DM Mono', fontSize: 12, ...style }}>{children}</td>
 }
-
-export const fmtE = (n, dec = 2) => '€' + Math.abs(n || 0).toLocaleString('de-DE', { minimumFractionDigits: dec, maximumFractionDigits: dec })
-export const fmtN = (n, dec = 2) => (n || 0).toLocaleString('de-DE', { minimumFractionDigits: dec, maximumFractionDigits: dec })
-export const pct  = n => (n >= 0 ? '+' : '-') + Math.abs(n || 0).toFixed(2) + '%'

@@ -1,32 +1,37 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { sb, ETF_HOLDINGS, COLORS, delay, fetchPrice, fetchDividends, fetchEurRate, FINNHUB_KEY, FINNHUB } from './config.js'
+import { sb, ETF_HOLDINGS, COLORS, delay, fetchPrice, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB_KEY, FINNHUB } from './config.js'
 import { Card, SLabel, Btn, FLabel, Inp, Sel, Modal, thS, Td, fmtE, fmtN, pct } from './ui.jsx'
 import AuthScreen from './AuthScreen.jsx'
 
 const TABS = ['overview', 'holdings', 'income', 'transactions', 'allocation', 'exposure', 'risk']
 
 export default function App() {
-  const [user, setUser] = useState(null)
-  const [authChecked, setAuthChecked] = useState(false)
-  const [holdings, setHoldings] = useState([])
-  const [txns, setTxns] = useState([])
-  const [tab, setTab] = useState('overview')
-  const [eurRate, setEurRate] = useState(0.92)
-  const [liveEur, setLiveEur] = useState(false)
-  const [fetchStatus, setFetchStatus] = useState('idle')
-  const [fetchLog, setFetchLog] = useState([])
-  const [lastUpdated, setLastUpdated] = useState(null)
-  const [perfData, setPerfData] = useState([])
-  const [showAddH, setShowAddH] = useState(false)
-  const [showAddT, setShowAddT] = useState(false)
-  const [showProfile, setShowProfile] = useState(false)
-  const [csvMsg, setCsvMsg] = useState('')
+  const [user,          setUser]          = useState(null)
+  const [authChecked,   setAuthChecked]   = useState(false)
+  const [holdings,      setHoldings]      = useState([])
+  const [txns,          setTxns]          = useState([])
+  const [tab,           setTab]           = useState('overview')
+  const [fxRates,       setFxRates]       = useState(DEFAULT_FX)   // live FX map
+  const [liveEur,       setLiveEur]       = useState(false)
+  const [fetchStatus,   setFetchStatus]   = useState('idle')
+  const [fetchLog,      setFetchLog]      = useState([])
+  const [lastUpdated,   setLastUpdated]   = useState(null)
+  const [perfData,      setPerfData]      = useState([])
+  const [showAddH,      setShowAddH]      = useState(false)
+  const [showAddT,      setShowAddT]      = useState(false)
+  const [showProfile,   setShowProfile]   = useState(false)
+  const [csvMsg,        setCsvMsg]        = useState('')
+  // Fix #5: declare isinResults state before it's used
+  const [isinResults,   setIsinResults]   = useState([])
+  const [isinLookup,    setIsinLookup]    = useState('idle')
   const fileRef = useRef()
 
-  const u2e = v => (v || 0) * eurRate
+  const eurRate = fxRates.EUR || 0.92
+  // u2e converts internal USD values → EUR for display
+  const u2e = v => (v || 0) / eurRate
 
-  // Auth
+  // ── Auth ──────────────────────────────────────────────────────────────
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null)
@@ -41,120 +46,156 @@ export default function App() {
   useEffect(() => { if (user) loadData() }, [user])
 
   const loadData = async () => {
-    const [{ data: h }, { data: t }] = await Promise.all([
+    const [{ data: h, error: he }, { data: t, error: te }] = await Promise.all([
       sb.from('holdings').select('*').order('created_at'),
       sb.from('transactions').select('*').order('date', { ascending: false }),
     ])
-    if (h) setHoldings(h.map(r => ({ id: r.id, symbol: r.symbol, name: r.name, type: r.type, qty: +r.qty, avgCost: +r.avg_cost, currentPrice: +r.current_price, sector: r.sector, annualFee: +r.annual_fee, dividendYield: +r.dividend_yield })))
-    if (t) setTxns(t.map(r => ({ id: r.id, date: r.date, symbol: r.symbol, type: r.type, qty: +r.qty, price: +r.price, fee: +r.fee, note: r.note })))
+    if (he) console.error('Holdings load error:', he)
+    if (te) console.error('Transactions load error:', te)
+    if (h) setHoldings(h.map(r => ({
+      id: r.id, symbol: r.symbol, name: r.name, type: r.type,
+      qty: +r.qty, avgCost: +r.avg_cost, currentPrice: +r.current_price,
+      sector: r.sector, annualFee: +r.annual_fee, dividendYield: +r.dividend_yield
+    })))
+    if (t) setTxns(t.map(r => ({
+      id: r.id, date: r.date, symbol: r.symbol, type: r.type,
+      qty: +r.qty, price: +r.price, fee: +r.fee, note: r.note
+    })))
   }
 
+  // ── Refresh all live data ──────────────────────────────────────────────
   const refreshAll = async () => {
     setFetchStatus('loading'); setFetchLog([])
     const addLog = msg => setFetchLog(l => [...l, msg])
 
-    addLog('Fetching EUR/USD rate…')
-    const rate = await fetchEurRate()
-    if (rate) { setEurRate(rate); setLiveEur(true); addLog(`✓ 1 USD = ${rate.toFixed(4)} EUR`) }
-    else addLog('⚠ Using fallback rate 0.92')
+    // Step 1: fetch FX rates — store in local var AND state
+    addLog('Fetching live FX rates…')
+    const freshRates = await fetchAllFxRates()
+    let activeFxRates = fxRates  // fallback to current state
+    if (freshRates) {
+      setFxRates(freshRates)
+      setLiveEur(true)
+      activeFxRates = freshRates  // Fix #1: use fresh rates immediately, not stale state
+      addLog(`✓ 1 USD = ${freshRates.EUR?.toFixed(4)} EUR · GBP ${freshRates.GBP?.toFixed(4)} · CHF ${freshRates.CHF?.toFixed(4)}`)
+    } else {
+      addLog('⚠ FX fetch failed — using fallback rates')
+    }
 
+    // Step 2: fetch prices for all holdings
+    // Fix #13: batch up to 3 concurrent fetches instead of strict sequential
     const updated = []
-    for (const h of holdings) {
-      addLog(`Fetching ${h.symbol}…`)
-      const price = await fetchPrice(h.symbol, h.type)
-      let divYield = h.dividendYield
-      if (h.type === 'stock' && price) {
-        const divs = await fetchDividends(h.symbol)
-        if (divs.length > 0) {
-          const annual = divs.reduce((s, d) => s + (d.amount || 0), 0)
-          divYield = parseFloat(((annual / price) * 100).toFixed(2))
+    const chunks = []
+    for (let i = 0; i < holdings.length; i += 3) chunks.push(holdings.slice(i, i + 3))
+
+    for (const chunk of chunks) {
+      const results = await Promise.all(chunk.map(async h => {
+        addLog(`Fetching ${h.symbol}…`)
+        const price = await fetchPrice(h.symbol, h.type, activeFxRates)
+
+        // Fix #7: use amountUSD from dividends (already converted in fetchDividends)
+        let divYield = h.dividendYield
+        if (h.type === 'stock' && price) {
+          const divs = await fetchDividends(h.symbol, activeFxRates)
+          if (divs.length > 0) {
+            const annualUSD = divs.reduce((s, d) => s + (d.amountUSD || 0), 0)
+            divYield = parseFloat(((annualUSD / price) * 100).toFixed(2))
+          }
         }
-        await delay(180)
-      }
-      if (price) {
-        addLog(`✓ ${h.symbol}: $${price.toFixed(2)}`)
-        await sb.from('holdings').update({ current_price: price, dividend_yield: divYield, updated_at: new Date().toISOString() }).eq('id', h.id)
-        updated.push({ ...h, currentPrice: price, dividendYield: divYield })
-      } else {
-        addLog(`⚠ ${h.symbol}: no data, keeping last price`)
-        updated.push(h)
-      }
-      await delay(220)
+
+        if (price) {
+          addLog(`✓ ${h.symbol}: $${price.toFixed(2)} (€${(u2e(price)).toFixed(2)})`)
+          const { error } = await sb.from('holdings')
+            .update({ current_price: price, dividend_yield: divYield, updated_at: new Date().toISOString() })
+            .eq('id', h.id)
+          if (error) addLog(`⚠ ${h.symbol}: DB update failed`)
+          return { ...h, currentPrice: price, dividendYield: divYield }
+        } else {
+          addLog(`⚠ ${h.symbol}: no price found, keeping last value`)
+          return h
+        }
+      }))
+      updated.push(...results)
+      await delay(300)  // brief pause between batches
     }
     setHoldings(updated)
 
-    // Build perf from transactions
+    // Step 3: build portfolio history from transactions
+    // Fix #6: add clear label that this uses current prices as approximation
     if (txns.length > 0) {
-      addLog('Building portfolio history…')
+      addLog('Building portfolio history (using current prices as approximation)…')
       const sorted = [...txns].sort((a, b) => a.date.localeCompare(b.date))
       const months = []
       const cur = new Date(sorted[sorted.length - 1].date); cur.setDate(1)
-      while (cur <= new Date()) { months.push(cur.toISOString().slice(0, 10)); cur.setMonth(cur.getMonth() + 1) }
-      const newPerf = months.slice(-10).map(md => {
+      while (cur <= new Date()) {
+        months.push(cur.toISOString().slice(0, 10))
+        cur.setMonth(cur.getMonth() + 1)
+      }
+      const newPerf = months.slice(-12).map(md => {
         const snap = {}
         txns.forEach(t => {
-          if (t.date <= md) { if (!snap[t.symbol]) snap[t.symbol] = 0; snap[t.symbol] += t.type === 'buy' ? +t.qty : -+t.qty }
+          if (t.date <= md) {
+            if (!snap[t.symbol]) snap[t.symbol] = 0
+            snap[t.symbol] += t.type === 'buy' ? +t.qty : -+t.qty
+          }
         })
         let val = 0
-        Object.entries(snap).forEach(([sym, qty]) => { if (qty <= 0) return; const h = updated.find(x => x.symbol === sym); if (h) val += qty * h.currentPrice })
-        return val > 0 ? { month: new Date(md).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }), value: val } : null
+        Object.entries(snap).forEach(([sym, qty]) => {
+          if (qty <= 0) return
+          const h = updated.find(x => x.symbol === sym)
+          if (h) val += qty * h.currentPrice
+        })
+        return val > 0
+          ? { month: new Date(md).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }), value: val }
+          : null
       }).filter(Boolean)
-      if (newPerf.length >= 2) { setPerfData(newPerf); addLog(`✓ History: ${newPerf.length} data points`) }
+      if (newPerf.length >= 2) { setPerfData(newPerf); addLog(`✓ History: ${newPerf.length} months`) }
     }
 
     setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
     setFetchStatus('done'); addLog('✓ All done!')
   }
 
-  // Add Holding
-  const [nh, setNh] = useState({ isin: '', symbol: '', name: '', type: 'stock', qty: '', avgCostEur: '', currentPrice: '', sector: 'Technology', annualFee: '0', dividendYield: '0' })
-  const [isinLookup, setIsinLookup] = useState('idle')
+  // ── Add Holding ───────────────────────────────────────────────────────
+  const emptyNh = { isin: '', symbol: '', name: '', type: 'stock', qty: '', avgCostEur: '', currentPrice: '', sector: 'Technology', annualFee: '0', dividendYield: '0' }
+  const [nh, setNh] = useState(emptyNh)
+
+  const resetAddHolding = () => {
+    setNh(emptyNh)
+    setIsinLookup('idle')
+    setIsinResults([])  // Fix #4: always clear results
+  }
 
   const lookupISIN = async () => {
     if (!nh.isin || nh.isin.length < 10) return
     setIsinLookup('loading')
     try {
-      // Step 1: Use Finnhub symbol lookup by ISIN — works for EU, NL, DE, FR etc.
       const r = await fetch(`${FINNHUB}/search?q=${nh.isin.toUpperCase()}&token=${FINNHUB_KEY}`)
       const d = await r.json()
       const results = d?.result || []
-
-      // Prefer exact ISIN match, then best description match
-      // Finnhub returns multiple listings (e.g. same stock on AMS, XETRA, NYSE)
-      // Priority: home exchange (AMS for NL, XETRA for DE), then US listing
       const isinUpper = nh.isin.toUpperCase()
       const countryCode = isinUpper.slice(0, 2)
 
-      // Exchange preference by country
       const prefExchange = {
-        NL: ['AS', 'AMS', 'XAMS'],   // Amsterdam
-        DE: ['XETRA', 'DE', 'GR'],   // Xetra / Frankfurt
-        FR: ['PA', 'XPAR'],          // Paris
-        BE: ['BR', 'XBRU'],          // Brussels
-        IT: ['MI', 'XMIL'],          // Milan
-        ES: ['MC', 'XMAD'],          // Madrid
-        GB: ['L', 'LSE', 'XLON'],    // London
-        IE: ['ISE'],                  // Dublin
-        LU: ['LU'],                   // Luxembourg
-        US: ['US', 'XNYS', 'XNAS'],  // US exchanges
+        NL: ['AS', 'AMS', 'XAMS'], DE: ['XETRA', 'DE', 'GR'], FR: ['PA', 'XPAR'],
+        BE: ['BR', 'XBRU'], IT: ['MI', 'XMIL'], ES: ['MC', 'XMAD'],
+        GB: ['L', 'LSE', 'XLON'], IE: ['ISE'], LU: ['LU'],
+        SE: ['ST', 'XSTO'], NO: ['OL', 'XOSL'], DK: ['CO', 'XCSE'],
+        FI: ['HE', 'XHEL'], CH: ['SW', 'XSWX'], US: ['US', 'XNYS', 'XNAS'],
       }
       const preferred = prefExchange[countryCode] || []
 
       let best = null
-      // First try preferred exchange
       for (const ex of preferred) {
-        best = results.find(r => r.symbol?.includes(ex) || r.displaySymbol?.includes('.'+ex))
+        best = results.find(r => r.symbol?.includes(ex) || r.displaySymbol?.includes('.' + ex))
         if (best) break
       }
-      // Fall back to first result
       if (!best) best = results[0]
 
       if (best) {
-        const sym = best.symbol || best.displaySymbol || ''
+        const sym  = best.symbol || best.displaySymbol || ''
         const name = best.description || ''
         const type = best.type === 'ETF' ? 'etf' : best.type === 'Crypto' ? 'crypto' : 'stock'
 
-        // Try to get sector from profile
         let sector = nh.sector
         try {
           const pr = await fetch(`${FINNHUB}/stock/profile2?symbol=${sym}&token=${FINNHUB_KEY}`)
@@ -163,56 +204,75 @@ export default function App() {
         } catch {}
 
         setNh(h => ({ ...h, symbol: sym, name, type, sector }))
-
-        // Fetch live price
-        const price = await fetchPrice(sym, type)
+        const price = await fetchPrice(sym, type, fxRates)
+        // Fix #10: price from fetchPrice is in USD — store as USD
         if (price) setNh(h => ({ ...h, currentPrice: String(price) }))
-
-        // Store all results so user can pick if multiple exchanges found
         setIsinResults(results.slice(0, 6))
         setIsinLookup('found')
       } else {
         setIsinLookup('notfound')
       }
     } catch (e) {
-      console.error(e)
+      console.error('ISIN lookup error:', e)
       setIsinLookup('notfound')
     }
   }
 
-  const [isinResults, setIsinResults] = useState([])
-
-  const selectIsinResult = async (result) => {
-    const sym = result.symbol || result.displaySymbol || ''
+  const selectIsinResult = async result => {
+    const sym  = result.symbol || result.displaySymbol || ''
     const name = result.description || ''
     const type = result.type === 'ETF' ? 'etf' : 'stock'
     setNh(h => ({ ...h, symbol: sym, name, type }))
-    const price = await fetchPrice(sym, type)
+    const price = await fetchPrice(sym, type, fxRates)
     if (price) setNh(h => ({ ...h, currentPrice: String(price) }))
   }
 
   const addHolding = async () => {
     if ((!nh.symbol && !nh.isin) || !nh.qty || !nh.avgCostEur) return
     const sym = nh.symbol.toUpperCase()
+    // avgCostEur is in EUR — convert to USD for internal storage
     const avgCostUSD = +nh.avgCostEur / eurRate
-    let price = nh.currentPrice ? +nh.currentPrice : await fetchPrice(sym, nh.type) || 0
-    const row = { user_id: user.id, symbol: sym, name: nh.name || sym, type: nh.type, qty: +nh.qty, avg_cost: avgCostUSD, current_price: price, sector: nh.sector || 'Other', annual_fee: +nh.annualFee, dividend_yield: +nh.dividendYield }
-    const { data } = await sb.from('holdings').insert(row).select().single()
-    if (data) setHoldings(hs => [...hs, { id: data.id, symbol: sym, name: nh.name || sym, type: nh.type, qty: +nh.qty, avgCost: avgCostUSD, currentPrice: price, sector: nh.sector || 'Other', annualFee: +nh.annualFee, dividendYield: +nh.dividendYield }])
-    setNh({ isin: '', symbol: '', name: '', type: 'stock', qty: '', avgCostEur: '', currentPrice: '', sector: 'Technology', annualFee: '0', dividendYield: '0' })
-    setIsinLookup('idle')
+    // Fix #10: currentPrice field in modal shows USD (auto-fetched) — use as-is
+    let price = nh.currentPrice ? +nh.currentPrice : await fetchPrice(sym, nh.type, fxRates) || 0
+    const row = {
+      user_id: user.id, symbol: sym, name: nh.name || sym, type: nh.type,
+      qty: +nh.qty, avg_cost: avgCostUSD, current_price: price,
+      sector: nh.sector || 'Other', annual_fee: +nh.annualFee, dividend_yield: +nh.dividendYield
+    }
+    // Fix #9: check for DB errors
+    const { data, error } = await sb.from('holdings').insert(row).select().single()
+    if (error) { alert(`Failed to save holding: ${error.message}`); return }
+    setHoldings(hs => [...hs, {
+      id: data.id, symbol: sym, name: nh.name || sym, type: nh.type,
+      qty: +nh.qty, avgCost: avgCostUSD, currentPrice: price,
+      sector: nh.sector || 'Other', annualFee: +nh.annualFee, dividendYield: +nh.dividendYield
+    }])
+    resetAddHolding()
     setShowAddH(false)
   }
 
-  const deleteHolding = async id => { await sb.from('holdings').delete().eq('id', id); setHoldings(hs => hs.filter(h => h.id !== id)) }
+  const deleteHolding = async id => {
+    const { error } = await sb.from('holdings').delete().eq('id', id)
+    if (!error) setHoldings(hs => hs.filter(h => h.id !== id))
+  }
 
-  // Add Transaction
-  const [nt, setNt] = useState({ date: new Date().toISOString().slice(0, 10), symbol: '', type: 'buy', qty: '', price: '', fee: '0', note: '' })
+  // ── Add Transaction ───────────────────────────────────────────────────
+  const emptyNt = { date: new Date().toISOString().slice(0, 10), symbol: '', type: 'buy', qty: '', priceEur: '', fee: '0', note: '' }
+  const [nt, setNt] = useState(emptyNt)
+
   const addTxn = async () => {
-    if (!nt.symbol || !nt.qty || !nt.price) return
-    const t = { ...nt, qty: +nt.qty, price: +nt.price, fee: +nt.fee, symbol: nt.symbol.toUpperCase() }
-    const { data } = await sb.from('transactions').insert({ user_id: user.id, ...t }).select().single()
-    setTxns(ts => [{ ...t, id: data?.id }, ...ts].sort((a, b) => b.date.localeCompare(a.date)))
+    if (!nt.symbol || !nt.qty || !nt.priceEur) return
+    // Fix #2: transaction price entered in EUR — convert to USD for storage
+    const priceUSD = +nt.priceEur / eurRate
+    const feeUSD   = +nt.fee / eurRate
+    const t = { ...nt, qty: +nt.qty, price: priceUSD, fee: feeUSD, symbol: nt.symbol.toUpperCase() }
+    // Fix #12: check for DB error before updating state
+    const { data, error } = await sb.from('transactions')
+      .insert({ user_id: user.id, date: t.date, symbol: t.symbol, type: t.type, qty: t.qty, price: t.price, fee: t.fee, note: t.note || '' })
+      .select().single()
+    if (error) { alert(`Failed to save transaction: ${error.message}`); return }
+
+    setTxns(ts => [{ ...t, id: data.id }, ...ts].sort((a, b) => b.date.localeCompare(a.date)))
     setHoldings(hs => hs.map(h => {
       if (h.symbol !== t.symbol) return h
       const newQty = t.type === 'buy' ? h.qty + t.qty : Math.max(0, h.qty - t.qty)
@@ -220,66 +280,103 @@ export default function App() {
       sb.from('holdings').update({ qty: newQty, avg_cost: newAvg, updated_at: new Date().toISOString() }).eq('id', h.id)
       return { ...h, qty: newQty, avgCost: newAvg }
     }))
-    setNt({ date: new Date().toISOString().slice(0, 10), symbol: '', type: 'buy', qty: '', price: '', fee: '0', note: '' })
+    setNt(emptyNt)
     setShowAddT(false)
   }
 
-  const deleteTxn = async id => { await sb.from('transactions').delete().eq('id', id); setTxns(ts => ts.filter(t => t.id !== id)) }
+  const deleteTxn = async id => {
+    const { error } = await sb.from('transactions').delete().eq('id', id)
+    if (!error) setTxns(ts => ts.filter(t => t.id !== id))
+  }
 
-  // CSV
+  // ── CSV Import ────────────────────────────────────────────────────────
   const handleCSV = e => {
     const file = e.target.files[0]; if (!file) return
     const reader = new FileReader()
     reader.onload = async ev => {
       try {
-        const lines = ev.target.result.trim().split('\n')
+        const lines   = ev.target.result.trim().split('\n')
         const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
-        let count = 0
+        let count = 0, errors = 0
         for (const line of lines.slice(1)) {
-          const vals = line.split(',').map(v => v.trim()); const row = {}
-          headers.forEach((h, i) => row[h] = vals[i])
+          const vals = line.split(',').map(v => v.trim())
+          const row  = {}; headers.forEach((h, i) => row[h] = vals[i])
           if (!row.symbol || !row.qty) continue
-          const rec = { user_id: user.id, symbol: row.symbol.toUpperCase(), name: row.name || row.symbol, type: row.type || 'stock', qty: +row.qty || 0, avg_cost: +row.avgcost || 0, current_price: +row.currentprice || 0, sector: row.sector || 'Other', annual_fee: +row.annualfee || 0, dividend_yield: +row.dividendyield || 0 }
-          const { data } = await sb.from('holdings').insert(rec).select().single()
-          if (data) { setHoldings(hs => [...hs, { id: data.id, symbol: rec.symbol, name: rec.name, type: rec.type, qty: rec.qty, avgCost: rec.avg_cost, currentPrice: rec.current_price, sector: rec.sector, annualFee: rec.annual_fee, dividendYield: rec.dividend_yield }]); count++ }
+          // CSV avg cost assumed to be in EUR — convert to USD
+          const avgCostUSD = (+row.avgcost || 0) / eurRate
+          const rec = {
+            user_id: user.id, symbol: row.symbol.toUpperCase(), name: row.name || row.symbol,
+            type: row.type || 'stock', qty: +row.qty || 0, avg_cost: avgCostUSD,
+            current_price: +row.currentprice || 0, sector: row.sector || 'Other',
+            annual_fee: +row.annualfee || 0, dividend_yield: +row.dividendyield || 0
+          }
+          const { data, error } = await sb.from('holdings').insert(rec).select().single()
+          if (error) { errors++; continue }
+          setHoldings(hs => [...hs, {
+            id: data.id, symbol: rec.symbol, name: rec.name, type: rec.type,
+            qty: rec.qty, avgCost: rec.avg_cost, currentPrice: rec.current_price,
+            sector: rec.sector, annualFee: rec.annual_fee, dividendYield: rec.dividend_yield
+          }])
+          count++
         }
-        setCsvMsg(`✓ Imported ${count} holdings`); setTimeout(() => setCsvMsg(''), 3000)
-      } catch { setCsvMsg('✗ CSV error') }
+        const msg = errors > 0
+          ? `✓ Imported ${count}, ⚠ ${errors} failed`
+          : `✓ Imported ${count} holdings`
+        setCsvMsg(msg); setTimeout(() => setCsvMsg(''), 4000)
+      } catch { setCsvMsg('✗ CSV parse error — check format') }
     }
     reader.readAsText(file); e.target.value = ''
   }
 
-  // Computed
+  // ── Computed values ───────────────────────────────────────────────────
   const C = useMemo(() => {
-    if (!holdings.length) return { rows: [], totalValue: 0, totalCost: 0, totalGain: 0, totalGainPct: 0, totalAnnCost: 0, totalAnnDiv: 0, netAnnIncome: 0, allocationData: [], typeData: [], winners: [], losers: [], avgVol: 0, concentration: 0, txnRows: [], totalTxnFees: 0, exposureRows: [], etfSymbols: [] }
+    const empty = {
+      rows: [], totalValue: 0, totalCost: 0, totalGain: 0, totalGainPct: 0,
+      totalAnnCost: 0, totalAnnDiv: 0, netAnnIncome: 0,
+      allocationData: [], typeData: [], winners: [], losers: [],
+      avgVol: 0, concentration: 0, txnRows: [], totalTxnFees: 0,
+      exposureRows: [], etfSymbols: []
+    }
+    if (!holdings.length) return empty
 
     const rows = holdings.map(h => {
-      const value = h.qty * h.currentPrice, cost = h.qty * h.avgCost, gain = value - cost
+      const value   = h.qty * h.currentPrice
+      const cost    = h.qty * h.avgCost
+      const gain    = value - cost
       const gainPct = cost ? (gain / cost) * 100 : 0
       return { ...h, value, cost, gain, gainPct, annCost: value * (h.annualFee / 100), annDiv: value * (h.dividendYield / 100) }
     })
 
-    const tv = rows.reduce((s, r) => s + r.value, 0)
-    const tc = rows.reduce((s, r) => s + r.cost, 0)
-    const tg = tv - tc, tgp = tc ? (tg / tc) * 100 : 0
+    const tv  = rows.reduce((s, r) => s + r.value, 0)
+    const tc  = rows.reduce((s, r) => s + r.cost, 0)
+    const tg  = tv - tc
     const tac = rows.reduce((s, r) => s + r.annCost, 0)
     const tad = rows.reduce((s, r) => s + r.annDiv, 0)
 
-    const bySec = {}; rows.forEach(r => { bySec[r.sector] = (bySec[r.sector] || 0) + r.value })
+    const bySec = {}
+    rows.forEach(r => { bySec[r.sector] = (bySec[r.sector] || 0) + r.value })
     const alloc = Object.entries(bySec).map(([name, value]) => ({ name, value, pct: (value / tv * 100).toFixed(1) }))
 
     const byType = { Stocks: 0, ETFs: 0, Crypto: 0 }
-    rows.forEach(r => { if (r.type === 'stock') byType.Stocks += r.value; else if (r.type === 'etf') byType.ETFs += r.value; else byType.Crypto += r.value })
+    rows.forEach(r => {
+      if (r.type === 'stock') byType.Stocks += r.value
+      else if (r.type === 'etf') byType.ETFs += r.value
+      else byType.Crypto += r.value
+    })
 
     const txnRows = txns.map(t => {
       const h = holdings.find(x => x.symbol === t.symbol)
-      const totalCostTxn = t.qty * t.price + t.fee, currentVal = h ? t.qty * h.currentPrice : 0
+      const totalCostTxn = t.qty * t.price + t.fee
+      const currentVal   = h ? t.qty * h.currentPrice : 0
       return { ...t, totalCostTxn, currentVal, pnl: t.type === 'buy' ? currentVal - totalCostTxn : (t.qty * t.price) - t.fee }
     })
 
-    // Exposure
+    // ETF exposure look-through
     const expMap = {}
-    rows.filter(r => r.type === 'stock').forEach(r => { if (!expMap[r.symbol]) expMap[r.symbol] = { name: r.name, directUSD: 0, etfBreakdown: {} }; expMap[r.symbol].directUSD += r.value })
+    rows.filter(r => r.type === 'stock').forEach(r => {
+      if (!expMap[r.symbol]) expMap[r.symbol] = { name: r.name, directUSD: 0, etfBreakdown: {} }
+      expMap[r.symbol].directUSD += r.value
+    })
     rows.filter(r => r.type === 'etf').forEach(r => {
       const comp = ETF_HOLDINGS[r.symbol]; if (!comp) return
       comp.forEach(({ symbol, name, weight }) => {
@@ -290,31 +387,37 @@ export default function App() {
     })
     const exposureRows = Object.entries(expMap).map(([symbol, d]) => {
       const etfT = Object.values(d.etfBreakdown).reduce((s, v) => s + v, 0)
-      const tot = d.directUSD + etfT
+      const tot  = d.directUSD + etfT
       return { symbol, name: d.name, directUSD: d.directUSD, etfBreakdown: d.etfBreakdown, etfTotalUSD: etfT, totalUSD: tot, totalPct: tv ? (tot / tv) * 100 : 0, directPct: tv ? (d.directUSD / tv) * 100 : 0 }
     }).sort((a, b) => b.totalUSD - a.totalUSD)
 
     return {
-      rows, totalValue: tv, totalCost: tc, totalGain: tg, totalGainPct: tgp,
+      rows, totalValue: tv, totalCost: tc, totalGain: tg, totalGainPct: tc ? (tg / tc) * 100 : 0,
       totalAnnCost: tac, totalAnnDiv: tad, netAnnIncome: tad - tac,
       allocationData: alloc,
       typeData: Object.entries(byType).map(([name, value]) => ({ name, value })),
       winners: [...rows].sort((a, b) => b.gainPct - a.gainPct).slice(0, 3),
-      losers: [...rows].sort((a, b) => a.gainPct - b.gainPct).slice(0, 3),
-      avgVol: rows.reduce((s, r) => s + Math.abs(r.gainPct), 0) / rows.length,
+      losers:  [...rows].sort((a, b) => a.gainPct - b.gainPct).slice(0, 3),
+      avgVol:  rows.reduce((s, r) => s + Math.abs(r.gainPct), 0) / rows.length,
       concentration: alloc.length ? Math.max(...alloc.map(a => parseFloat(a.pct))) : 0,
       txnRows, totalTxnFees: txns.reduce((s, t) => s + (t.fee || 0), 0),
       exposureRows, etfSymbols: rows.filter(r => r.type === 'etf' && ETF_HOLDINGS[r.symbol]).map(r => r.symbol)
     }
   }, [holdings, txns])
 
-  if (!authChecked) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', color: 'var(--muted)', fontFamily: 'DM Mono', fontSize: 13 }}>Loading…</div>
+  // ── Auth guards ───────────────────────────────────────────────────────
+  if (!authChecked) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', color: 'var(--muted)', fontFamily: 'DM Mono', fontSize: 13 }}>
+      Loading…
+    </div>
+  )
   if (!user) return <AuthScreen onAuth={() => sb.auth.getSession().then(({ data: { session } }) => setUser(session?.user))} />
 
+  // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{ borderBottom: '1px solid var(--border)', padding: '11px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 50, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 30, height: 30, background: 'linear-gradient(135deg,#00d4aa,#4ea8de)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>⬡</div>
@@ -326,7 +429,10 @@ export default function App() {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', paddingRight: 8, borderRight: '1px solid var(--border)' }}>
             1 USD = {eurRate.toFixed(4)} EUR
-            {liveEur && <span style={{ color: 'var(--accent)', marginLeft: 4 }}>● live</span>}
+            {fxRates.GBP && <span style={{ marginLeft: 6, opacity: 0.6 }}>· GBP {fxRates.GBP.toFixed(4)}</span>}
+            {liveEur
+              ? <span style={{ color: 'var(--accent)', marginLeft: 4 }}>● live</span>
+              : <span style={{ color: 'var(--yellow)', marginLeft: 4 }}>● fallback</span>}
             {lastUpdated && <span style={{ marginLeft: 6, opacity: 0.5 }}>{lastUpdated}</span>}
           </div>
           <button onClick={refreshAll} disabled={fetchStatus === 'loading'} style={{ background: '#0d2a1f', border: '1px solid #00d4aa55', color: 'var(--accent)', borderRadius: 8, padding: '7px 13px', cursor: fetchStatus === 'loading' ? 'not-allowed' : 'pointer', fontFamily: 'Syne', fontSize: 12, fontWeight: 600, opacity: fetchStatus === 'loading' ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -341,20 +447,26 @@ export default function App() {
         </div>
       </div>
 
+      {/* Fetch log */}
       {(fetchStatus === 'loading' || fetchStatus === 'done') && (
         <div style={{ background: '#040709', borderBottom: '1px solid var(--border)', padding: '6px 20px', maxHeight: 90, overflowY: 'auto' }}>
-          {fetchLog.map((line, i) => <div key={i} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: line.startsWith('✓') ? 'var(--accent)' : line.startsWith('⚠') ? 'var(--yellow)' : 'var(--muted)', lineHeight: 1.8 }}>{line}</div>)}
+          {fetchLog.map((line, i) => (
+            <div key={i} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', lineHeight: 1.8, color: line.startsWith('✓') ? 'var(--accent)' : line.startsWith('⚠') ? 'var(--yellow)' : 'var(--muted)' }}>{line}</div>
+          ))}
         </div>
       )}
       {csvMsg && <div style={{ background: '#0d2a1f', color: 'var(--accent)', padding: '5px 20px', fontSize: 11, fontFamily: 'var(--font-mono)' }}>{csvMsg}</div>}
 
-      {/* Nav */}
+      {/* ── Nav ── */}
       <div style={{ borderBottom: '1px solid var(--border)', padding: '0 20px', display: 'flex', background: 'var(--surface)', overflowX: 'auto' }}>
-        {TABS.map(t => <button key={t} onClick={() => setTab(t)} style={{ padding: '9px 13px', background: 'none', border: 'none', color: tab === t ? 'var(--accent)' : 'var(--muted)', fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize', letterSpacing: '0.4px', borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', whiteSpace: 'nowrap' }}>{t}</button>)}
+        {TABS.map(t => (
+          <button key={t} onClick={() => setTab(t)} style={{ padding: '9px 13px', background: 'none', border: 'none', color: tab === t ? 'var(--accent)' : 'var(--muted)', fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize', letterSpacing: '0.4px', borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', whiteSpace: 'nowrap' }}>{t}</button>
+        ))}
       </div>
 
       <div style={{ padding: '18px 20px', maxWidth: 1440, margin: '0 auto' }}>
 
+        {/* ── Empty state ── */}
         {holdings.length === 0 && (
           <div className="fade-in" style={{ textAlign: 'center', padding: '70px 20px' }}>
             <div style={{ fontSize: 52, marginBottom: 14 }}>⬡</div>
@@ -368,14 +480,15 @@ export default function App() {
         )}
 
         {holdings.length > 0 && <>
-          {/* KPI strip */}
+
+          {/* ── KPI strip ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 9, marginBottom: 18 }}>
             {[
-              { l: 'Portfolio Value',  v: fmtE(u2e(C.totalValue)),    s: null,                 c: false },
-              { l: 'Total Return',     v: fmtE(u2e(C.totalGain)),     s: pct(C.totalGainPct),  c: C.totalGain >= 0 ? 'var(--green)' : 'var(--red)' },
-              { l: 'Annual Costs',     v: fmtE(u2e(C.totalAnnCost)),  s: 'fees & TER p.a.',    c: 'var(--yellow)' },
-              { l: 'Annual Dividends', v: fmtE(u2e(C.totalAnnDiv)),   s: 'est. p.a.',          c: 'var(--accent)' },
-              { l: 'Net Income p.a.',  v: fmtE(u2e(C.netAnnIncome)),  s: 'divs − fees',        c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)' },
+              { l: 'Portfolio Value',  v: fmtE(u2e(C.totalValue)),    s: null,                c: false },
+              { l: 'Total Return',     v: fmtE(u2e(C.totalGain)),     s: pct(C.totalGainPct), c: C.totalGain >= 0 ? 'var(--green)' : 'var(--red)' },
+              { l: 'Annual Costs',     v: fmtE(u2e(C.totalAnnCost)),  s: 'fees & TER p.a.',   c: 'var(--yellow)' },
+              { l: 'Annual Dividends', v: fmtE(u2e(C.totalAnnDiv)),   s: 'est. p.a.',         c: 'var(--accent)' },
+              { l: 'Net Income p.a.',  v: fmtE(u2e(C.netAnnIncome)),  s: 'divs − fees',       c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)' },
               { l: 'Positions',        v: `${holdings.length}`,        s: `${txns.length} trades`, c: false },
             ].map((k, i) => (
               <Card key={i} style={{ padding: '12px 14px' }}>
@@ -386,21 +499,27 @@ export default function App() {
             ))}
           </div>
 
-          {/* OVERVIEW */}
+          {/* ── OVERVIEW ── */}
           {tab === 'overview' && (
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr)', gap: 12 }}>
               <Card>
                 <SLabel text="Portfolio Value Over Time (EUR)" />
+                {/* Fix #6: note that chart uses current prices */}
                 {perfData.length >= 2 ? (
-                  <ResponsiveContainer width="100%" height={190}>
-                    <AreaChart data={perfData.map(d => ({ ...d, eur: u2e(d.value) }))}>
-                      <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#00d4aa" stopOpacity={0.2} /><stop offset="95%" stopColor="#00d4aa" stopOpacity={0} /></linearGradient></defs>
-                      <XAxis dataKey="month" tick={{ fill: '#5a7a96', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#5a7a96', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} tickFormatter={v => '€' + Math.round(v / 1000) + 'k'} />
-                      <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(v), 'Value']} />
-                      <Area type="monotone" dataKey="eur" stroke="#00d4aa" strokeWidth={2} fill="url(#g1)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <>
+                    <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginBottom: 8 }}>
+                      ℹ Based on current prices applied to historical quantities
+                    </div>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <AreaChart data={perfData.map(d => ({ ...d, eur: u2e(d.value) }))}>
+                        <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#00d4aa" stopOpacity={0.2} /><stop offset="95%" stopColor="#00d4aa" stopOpacity={0} /></linearGradient></defs>
+                        <XAxis dataKey="month" tick={{ fill: '#5a7a96', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: '#5a7a96', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} tickFormatter={v => '€' + Math.round(v / 1000) + 'k'} />
+                        <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(v), 'Value']} />
+                        <Area type="monotone" dataKey="eur" stroke="#00d4aa" strokeWidth={2} fill="url(#g1)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </>
                 ) : (
                   <div style={{ height: 190, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                     <div style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>Chart builds after first Refresh</div>
@@ -411,9 +530,12 @@ export default function App() {
               <Card>
                 <SLabel text="Asset Mix" />
                 <ResponsiveContainer width="100%" height={140}>
-                  <PieChart><Pie data={C.typeData} cx="50%" cy="50%" innerRadius={42} outerRadius={65} paddingAngle={3} dataKey="value">
-                    {C.typeData.map((_, i) => <Cell key={i} fill={COLORS[i]} strokeWidth={0} />)}
-                  </Pie><Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(u2e(v))]} /></PieChart>
+                  <PieChart>
+                    <Pie data={C.typeData} cx="50%" cy="50%" innerRadius={42} outerRadius={65} paddingAngle={3} dataKey="value">
+                      {C.typeData.map((_, i) => <Cell key={i} fill={COLORS[i]} strokeWidth={0} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(u2e(v))]} />
+                  </PieChart>
                 </ResponsiveContainer>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {C.typeData.map((d, i) => (
@@ -434,7 +556,7 @@ export default function App() {
                           <div><span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500 }}>{r.symbol}</span><span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>{r.name}</span></div>
                           <div style={{ textAlign: 'right' }}>
                             <div style={{ color: r.gainPct >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{pct(r.gainPct)}</div>
-                            <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{r.gain >= 0 ? '+' : '-'}{fmtE(u2e(Math.abs(r.gain)))}</div>
+                            <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{fmtE(u2e(r.gain))}</div>
                           </div>
                         </div>
                       ))}
@@ -445,7 +567,7 @@ export default function App() {
             </div>
           )}
 
-          {/* HOLDINGS */}
+          {/* ── HOLDINGS ── */}
           {tab === 'holdings' && (
             <Card>
               <div style={{ overflowX: 'auto' }}>
@@ -463,13 +585,13 @@ export default function App() {
                         <Td style={{ fontSize: 11 }}>{fmtE(u2e(r.avgCost))}</Td>
                         <Td style={{ fontSize: 11 }}>{fmtE(u2e(r.currentPrice))}</Td>
                         <Td style={{ fontWeight: 500 }}>{fmtE(u2e(r.value))}</Td>
-                        <Td style={{ color: r.gain >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{r.gain >= 0 ? '+' : '-'}{fmtE(u2e(Math.abs(r.gain)))}</Td>
+                        <Td style={{ color: r.gain >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{fmtE(u2e(r.gain))}</Td>
                         <Td style={{ color: r.gainPct >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{pct(r.gainPct)}</Td>
                         <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{r.annualFee}%</Td>
                         <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{r.dividendYield}%</Td>
                         <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{fmtE(u2e(r.annCost))}</Td>
                         <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{fmtE(u2e(r.annDiv))}</Td>
-                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500, fontSize: 11 }}>{net >= 0 ? '+' : '-'}{fmtE(u2e(Math.abs(net)))}</Td>
+                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500, fontSize: 11 }}>{fmtE(u2e(net))}</Td>
                         <Td><button onClick={() => deleteHolding(r.id)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted)', cursor: 'pointer', borderRadius: 3, padding: '2px 5px', fontSize: 10 }}>✕</button></Td>
                       </tr>
                     )})}
@@ -477,12 +599,12 @@ export default function App() {
                   <tfoot><tr style={{ borderTop: '2px solid var(--border2)' }}>
                     <td colSpan={6} style={{ padding: '8px', fontFamily: 'DM Mono', fontSize: 10, color: 'var(--muted)' }}>TOTAL</td>
                     <Td style={{ fontWeight: 500 }}>{fmtE(u2e(C.totalValue))}</Td>
-                    <Td style={{ color: C.totalGain >= 0 ? 'var(--green)' : 'var(--red)' }}>{C.totalGain >= 0 ? '+' : '-'}{fmtE(u2e(Math.abs(C.totalGain)))}</Td>
+                    <Td style={{ color: C.totalGain >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(u2e(C.totalGain))}</Td>
                     <Td style={{ color: C.totalGainPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{pct(C.totalGainPct)}</Td>
                     <td colSpan={2} />
                     <Td style={{ color: 'var(--yellow)' }}>{fmtE(u2e(C.totalAnnCost))}</Td>
                     <Td style={{ color: 'var(--accent)' }}>{fmtE(u2e(C.totalAnnDiv))}</Td>
-                    <Td style={{ color: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{C.netAnnIncome >= 0 ? '+' : '-'}{fmtE(u2e(Math.abs(C.netAnnIncome)))}</Td>
+                    <Td style={{ color: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{fmtE(u2e(C.netAnnIncome))}</Td>
                     <td />
                   </tr></tfoot>
                 </table>
@@ -490,15 +612,15 @@ export default function App() {
             </Card>
           )}
 
-          {/* INCOME */}
+          {/* ── INCOME ── */}
           {tab === 'income' && (
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 9 }}>
                 {[
-                  { l: 'Annual Dividends', v: fmtE(u2e(C.totalAnnDiv)), c: 'var(--accent)', s: 'est. gross' },
-                  { l: 'Annual Fees', v: fmtE(u2e(C.totalAnnCost)), c: 'var(--yellow)', s: 'TER drag' },
-                  { l: 'Net Annual', v: fmtE(u2e(C.netAnnIncome)), c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', s: 'divs − fees' },
-                  { l: 'Monthly Net', v: fmtE(u2e(C.netAnnIncome / 12)), c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', s: 'avg per month' },
+                  { l: 'Annual Dividends', v: fmtE(u2e(C.totalAnnDiv)),       c: 'var(--accent)',  s: 'est. gross' },
+                  { l: 'Annual Fees',      v: fmtE(u2e(C.totalAnnCost)),      c: 'var(--yellow)',  s: 'TER drag' },
+                  { l: 'Net Annual',       v: fmtE(u2e(C.netAnnIncome)),      c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', s: 'divs − fees' },
+                  { l: 'Monthly Net',      v: fmtE(u2e(C.netAnnIncome / 12)), c: C.netAnnIncome >= 0 ? 'var(--green)' : 'var(--red)', s: 'avg per month' },
                 ].map((k, i) => (
                   <Card key={i} style={{ padding: '12px 14px' }}>
                     <div style={{ fontSize: 8, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 6 }}>{k.l}</div>
@@ -522,8 +644,8 @@ export default function App() {
                         <Td style={{ color: 'var(--yellow)' }}>{fmtE(u2e(r.annCost))}</Td>
                         <Td style={{ color: 'var(--accent)' }}>{r.dividendYield}%</Td>
                         <Td style={{ color: 'var(--accent)' }}>{fmtE(u2e(r.annDiv))}</Td>
-                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{net >= 0 ? '+' : '-'}{fmtE(u2e(Math.abs(net)))}</Td>
-                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)' }}>{net >= 0 ? '+' : '-'}{fmtE(u2e(Math.abs(net / 12)))}</Td>
+                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{fmtE(u2e(net))}</Td>
+                        <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(u2e(net / 12))}</Td>
                       </tr>
                     )})}
                   </tbody>
@@ -532,15 +654,15 @@ export default function App() {
             </div>
           )}
 
-          {/* TRANSACTIONS */}
+          {/* ── TRANSACTIONS ── */}
           {tab === 'transactions' && (
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 9 }}>
                 {[
-                  { l: 'Total Transactions', v: txns.length, s: 'all time' },
-                  { l: 'Buy Orders', v: txns.filter(t => t.type === 'buy').length, s: 'purchases', c: 'var(--green)' },
-                  { l: 'Sell Orders', v: txns.filter(t => t.type === 'sell').length, s: 'exits', c: 'var(--red)' },
-                  { l: 'Total Fees', v: fmtE(u2e(C.totalTxnFees)), s: 'brokerage paid', c: 'var(--yellow)' },
+                  { l: 'Total Transactions', v: txns.length,                                  s: 'all time' },
+                  { l: 'Buy Orders',         v: txns.filter(t => t.type === 'buy').length,    s: 'purchases', c: 'var(--green)' },
+                  { l: 'Sell Orders',        v: txns.filter(t => t.type === 'sell').length,   s: 'exits',     c: 'var(--red)' },
+                  { l: 'Total Fees',         v: fmtE(u2e(C.totalTxnFees)),                    s: 'brokerage', c: 'var(--yellow)' },
                 ].map((k, i) => (
                   <Card key={i} style={{ padding: '12px 14px' }}>
                     <div style={{ fontSize: 8, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>{k.l}</div>
@@ -566,7 +688,7 @@ export default function App() {
                         <Td style={{ fontSize: 11, color: 'var(--yellow)' }}>{fmtE(u2e(r.fee))}</Td>
                         <Td style={{ fontSize: 11 }}>{fmtE(u2e(r.totalCostTxn))}</Td>
                         <Td style={{ fontSize: 11 }}>{r.currentVal ? fmtE(u2e(r.currentVal)) : '—'}</Td>
-                        <Td style={{ fontWeight: 500, color: r.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{r.pnl >= 0 ? '+' : '-'}{fmtE(u2e(Math.abs(r.pnl)))}</Td>
+                        <Td style={{ fontWeight: 500, color: r.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(u2e(r.pnl))}</Td>
                         <Td style={{ fontSize: 10, color: 'var(--muted)', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.note || '—'}</Td>
                         <Td><button onClick={() => deleteTxn(r.id)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted)', cursor: 'pointer', borderRadius: 3, padding: '2px 5px', fontSize: 10 }}>✕</button></Td>
                       </tr>
@@ -577,19 +699,25 @@ export default function App() {
             </div>
           )}
 
-          {/* ALLOCATION */}
+          {/* ── ALLOCATION ── */}
           {tab === 'allocation' && (
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 12 }}>
               <Card>
                 <SLabel text="Sector Allocation" />
                 <ResponsiveContainer width="100%" height={230}>
-                  <PieChart><Pie data={C.allocationData} cx="50%" cy="50%" outerRadius={90} paddingAngle={2} dataKey="value">
-                    {C.allocationData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} strokeWidth={0} />)}
-                  </Pie><Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(u2e(v))]} /></PieChart>
+                  <PieChart>
+                    <Pie data={C.allocationData} cx="50%" cy="50%" outerRadius={90} paddingAngle={2} dataKey="value">
+                      {C.allocationData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} strokeWidth={0} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(u2e(v))]} />
+                  </PieChart>
                 </ResponsiveContainer>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
                   {C.allocationData.map((d, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: COLORS[i % COLORS.length] }} /><span style={{ fontSize: 10, color: 'var(--muted)' }}>{d.name} {d.pct}%</span></div>
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: 2, background: COLORS[i % COLORS.length] }} />
+                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>{d.name} {d.pct}%</span>
+                    </div>
                   ))}
                 </div>
               </Card>
@@ -600,14 +728,16 @@ export default function App() {
                     <XAxis type="number" tick={{ fill: '#5a7a96', fontSize: 9, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} tickFormatter={v => '€' + Math.round(v / 1000) + 'k'} />
                     <YAxis type="category" dataKey="symbol" tick={{ fill: '#e8edf2', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={36} />
                     <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={v => [fmtE(v)]} />
-                    <Bar dataKey="eur" radius={[0, 4, 4, 0]}>{[...C.rows].sort((a, b) => b.value - a.value).slice(0, 8).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Bar>
+                    <Bar dataKey="eur" radius={[0, 4, 4, 0]}>
+                      {[...C.rows].sort((a, b) => b.value - a.value).slice(0, 8).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </Card>
             </div>
           )}
 
-          {/* EXPOSURE */}
+          {/* ── EXPOSURE ── */}
           {tab === 'exposure' && (
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ padding: '9px 13px', background: '#0d1a2a', border: '1px solid #1e3a5f', borderRadius: 8, fontSize: 11, color: '#7ab3d4', fontFamily: 'DM Mono' }}>
@@ -654,7 +784,9 @@ export default function App() {
                           <Td style={{ fontWeight: 600 }}>{fmtE(u2e(r.totalUSD))}</Td>
                           <Td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                              <div style={{ width: 38, height: 4, background: 'var(--surface2)', borderRadius: 2, overflow: 'hidden' }}><div style={{ width: `${Math.min(r.totalPct / 10 * 100, 100)}%`, height: '100%', background: r.totalPct > 7 ? 'var(--red)' : r.totalPct > 4 ? 'var(--yellow)' : 'var(--accent)', borderRadius: 2 }} /></div>
+                              <div style={{ width: 38, height: 4, background: 'var(--surface2)', borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{ width: `${Math.min(r.totalPct / 10 * 100, 100)}%`, height: '100%', background: r.totalPct > 7 ? 'var(--red)' : r.totalPct > 4 ? 'var(--yellow)' : 'var(--accent)', borderRadius: 2 }} />
+                              </div>
                               <span style={{ fontSize: 10, fontFamily: 'DM Mono', color: r.totalPct > 7 ? 'var(--red)' : r.totalPct > 4 ? 'var(--yellow)' : 'var(--text)' }}>{fmtN(r.totalPct)}%</span>
                             </div>
                           </Td>
@@ -668,13 +800,13 @@ export default function App() {
             </div>
           )}
 
-          {/* RISK */}
+          {/* ── RISK ── */}
           {tab === 'risk' && (
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10 }}>
                 {[
-                  { l: 'Avg Volatility', v: fmtN(C.avgVol) + '%', c: 'var(--yellow)', desc: 'Avg unrealised gain/loss', r: C.avgVol > 30 ? 'High' : C.avgVol > 15 ? 'Medium' : 'Low' },
-                  { l: 'Concentration', v: fmtN(C.concentration) + '%', c: C.concentration > 40 ? 'var(--red)' : 'var(--yellow)', desc: 'Largest single sector', r: C.concentration > 50 ? 'High' : C.concentration > 30 ? 'Medium' : 'Low' },
+                  { l: 'Avg Volatility',  v: fmtN(C.avgVol) + '%',        c: 'var(--yellow)',  desc: 'Avg unrealised gain/loss', r: C.avgVol > 30 ? 'High' : C.avgVol > 15 ? 'Medium' : 'Low' },
+                  { l: 'Concentration',   v: fmtN(C.concentration) + '%',  c: C.concentration > 40 ? 'var(--red)' : 'var(--yellow)', desc: 'Largest single sector', r: C.concentration > 50 ? 'High' : C.concentration > 30 ? 'Medium' : 'Low' },
                   { l: 'Crypto Exposure', v: fmtN(C.typeData.find(t => t.name === 'Crypto')?.value / C.totalValue * 100 || 0) + '%', c: 'var(--accent2)', desc: '% in crypto assets', r: (C.typeData.find(t => t.name === 'Crypto')?.value / C.totalValue * 100 || 0) > 30 ? 'High' : 'Moderate' },
                 ].map((m, i) => (
                   <Card key={i}>
@@ -706,46 +838,28 @@ export default function App() {
         </>}
       </div>
 
-      {/* Add Holding Modal */}
+      {/* ── Add Holding Modal ── */}
       {showAddH && (
-        <Modal title="Add Holding" onClose={() => { setShowAddH(false); setIsinLookup('idle') }}>
-
-          {/* ISIN lookup */}
+        <Modal title="Add Holding" onClose={() => { setShowAddH(false); resetAddHolding() }}>
           <div style={{ marginBottom: 16, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border2)' }}>
             <FLabel>ISIN (optional — auto-fills symbol &amp; name)</FLabel>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Inp
-                value={nh.isin}
-                onChange={e => { setNh(h => ({ ...h, isin: e.target.value })); setIsinLookup('idle') }}
-                placeholder="e.g. US0378331005"
-                style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '1px' }}
-              />
-              <button
-                onClick={lookupISIN}
-                disabled={isinLookup === 'loading' || nh.isin.length < 10}
-                style={{ padding: '8px 14px', background: '#0d2a1f', border: '1px solid #00d4aa55', color: 'var(--accent)', borderRadius: 6, cursor: 'pointer', fontFamily: 'Syne', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', opacity: nh.isin.length < 10 ? 0.4 : 1 }}
-              >
+              <Inp value={nh.isin} onChange={e => { setNh(h => ({ ...h, isin: e.target.value })); setIsinLookup('idle'); setIsinResults([]) }} placeholder="e.g. NL0010273215" style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '1px' }} />
+              <button onClick={lookupISIN} disabled={isinLookup === 'loading' || nh.isin.length < 10} style={{ padding: '8px 14px', background: '#0d2a1f', border: '1px solid #00d4aa55', color: 'var(--accent)', borderRadius: 6, cursor: 'pointer', fontFamily: 'Syne', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', opacity: nh.isin.length < 10 ? 0.4 : 1 }}>
                 {isinLookup === 'loading' ? '…' : '🔍 Lookup'}
               </button>
             </div>
             {isinLookup === 'found' && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'DM Mono', marginBottom: 6 }}>
-                  ✓ Selected: <strong>{nh.name}</strong> ({nh.symbol}){nh.currentPrice ? ` · $${parseFloat(nh.currentPrice).toFixed(2)}` : ''}
+                  ✓ {nh.name} ({nh.symbol}){nh.currentPrice ? ` · €${(+nh.currentPrice / eurRate).toFixed(2)}` : ''}
                 </div>
                 {isinResults.length > 1 && (
                   <div>
-                    <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>
-                      Found on {isinResults.length} exchanges — tap to switch:
-                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>Switch exchange:</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                       {isinResults.map((r, i) => (
-                        <button key={i} onClick={() => selectIsinResult(r)} style={{
-                          padding: '3px 9px', borderRadius: 4, border: `1px solid ${nh.symbol === r.symbol ? 'var(--accent)' : 'var(--border2)'}`,
-                          background: nh.symbol === r.symbol ? '#0d2a1f' : 'var(--surface2)',
-                          color: nh.symbol === r.symbol ? 'var(--accent)' : 'var(--muted)',
-                          fontFamily: 'DM Mono', fontSize: 10, cursor: 'pointer'
-                        }}>
+                        <button key={i} onClick={() => selectIsinResult(r)} style={{ padding: '3px 9px', borderRadius: 4, border: `1px solid ${nh.symbol === r.symbol ? 'var(--accent)' : 'var(--border2)'}`, background: nh.symbol === r.symbol ? '#0d2a1f' : 'var(--surface2)', color: nh.symbol === r.symbol ? 'var(--accent)' : 'var(--muted)', fontFamily: 'DM Mono', fontSize: 10, cursor: 'pointer' }}>
                           {r.symbol}
                         </button>
                       ))}
@@ -754,51 +868,24 @@ export default function App() {
                 )}
               </div>
             )}
-            {isinLookup === 'notfound' && (
-              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', fontFamily: 'DM Mono' }}>
-                ⚠ ISIN not found — try entering the ticker symbol manually below
-              </div>
-            )}
+            {isinLookup === 'notfound' && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', fontFamily: 'DM Mono' }}>⚠ Not found — enter symbol manually below</div>}
           </div>
-
-          {/* Manual fields */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <FLabel>Symbol (ticker)</FLabel>
-              <Inp value={nh.symbol} onChange={e => setNh(h => ({ ...h, symbol: e.target.value }))} placeholder="AAPL" style={{ textTransform: 'uppercase' }} />
-            </div>
-            <div>
-              <FLabel>Full Name</FLabel>
-              <Inp value={nh.name} onChange={e => setNh(h => ({ ...h, name: e.target.value }))} placeholder="Apple Inc." />
-            </div>
-            <div>
-              <FLabel>Quantity (aantal)</FLabel>
-              <Inp value={nh.qty} onChange={e => setNh(h => ({ ...h, qty: e.target.value }))} placeholder="10" type="number" />
-            </div>
+            <div><FLabel>Symbol (ticker)</FLabel><Inp value={nh.symbol} onChange={e => setNh(h => ({ ...h, symbol: e.target.value }))} placeholder="ASML.AS" style={{ textTransform: 'uppercase' }} /></div>
+            <div><FLabel>Full Name</FLabel><Inp value={nh.name} onChange={e => setNh(h => ({ ...h, name: e.target.value }))} placeholder="ASML Holding" /></div>
+            <div><FLabel>Aantal (Quantity)</FLabel><Inp value={nh.qty} onChange={e => setNh(h => ({ ...h, qty: e.target.value }))} placeholder="10" type="number" /></div>
             <div>
               <FLabel>Gemiddelde aankoopprijs (€)</FLabel>
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', fontFamily: 'DM Mono', fontSize: 12, pointerEvents: 'none' }}>€</span>
                 <Inp value={nh.avgCostEur} onChange={e => setNh(h => ({ ...h, avgCostEur: e.target.value }))} placeholder="155.00" type="number" style={{ paddingLeft: 22 }} />
               </div>
-              {nh.avgCostEur && <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 3 }}>≈ ${(+nh.avgCostEur / eurRate).toFixed(2)} USD</div>}
+              {nh.avgCostEur && <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 3 }}>≈ ${(+nh.avgCostEur / eurRate).toFixed(2)} USD stored internally</div>}
             </div>
-            <div>
-              <FLabel>Sector</FLabel>
-              <Inp value={nh.sector} onChange={e => setNh(h => ({ ...h, sector: e.target.value }))} placeholder="Technology" />
-            </div>
-            <div>
-              <FLabel>Annual Fee % (TER)</FLabel>
-              <Inp value={nh.annualFee} onChange={e => setNh(h => ({ ...h, annualFee: e.target.value }))} placeholder="0.03" type="number" />
-            </div>
-            <div>
-              <FLabel>Dividend Yield %</FLabel>
-              <Inp value={nh.dividendYield} onChange={e => setNh(h => ({ ...h, dividendYield: e.target.value }))} placeholder="1.3" type="number" />
-            </div>
-            <div>
-              <FLabel>Current Price (leave blank)</FLabel>
-              <Inp value={nh.currentPrice} onChange={e => setNh(h => ({ ...h, currentPrice: e.target.value }))} placeholder="auto-fetched" type="number" />
-            </div>
+            <div><FLabel>Sector</FLabel><Inp value={nh.sector} onChange={e => setNh(h => ({ ...h, sector: e.target.value }))} placeholder="Technology" /></div>
+            <div><FLabel>Annual Fee % (TER)</FLabel><Inp value={nh.annualFee} onChange={e => setNh(h => ({ ...h, annualFee: e.target.value }))} placeholder="0.03" type="number" /></div>
+            <div><FLabel>Dividend Yield %</FLabel><Inp value={nh.dividendYield} onChange={e => setNh(h => ({ ...h, dividendYield: e.target.value }))} placeholder="1.3" type="number" /></div>
+            <div><FLabel>Current Price (leave blank)</FLabel><Inp value={nh.currentPrice} onChange={e => setNh(h => ({ ...h, currentPrice: e.target.value }))} placeholder="auto-fetched in USD" type="number" /></div>
           </div>
           <div style={{ marginTop: 10 }}><FLabel>Type</FLabel>
             <Sel value={nh.type} onChange={e => setNh(h => ({ ...h, type: e.target.value }))}>
@@ -808,44 +895,54 @@ export default function App() {
             </Sel>
           </div>
           <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 8 }}>
-            💡 Enter ISIN to auto-fill · Aankoopprijs in EUR · Current price fetched automatically
+            💡 ISIN lookup auto-fills symbol · Aankoopprijs in EUR · Current price fetched automatically
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            <Btn label="Cancel" onClick={() => { setShowAddH(false); setIsinLookup('idle') }} style={{ flex: 1 }} />
+            <Btn label="Cancel" onClick={() => { setShowAddH(false); resetAddHolding() }} style={{ flex: 1 }} />
             <Btn label="Add Holding" variant="accent" onClick={addHolding} style={{ flex: 1 }} />
           </div>
         </Modal>
       )}
 
-      {/* Add Transaction Modal */}
+      {/* ── Add Transaction Modal ── Fix #2: price & fee in EUR ── */}
       {showAddT && (
         <Modal title="Log Transaction" onClose={() => setShowAddT(false)}>
           <div style={{ marginBottom: 12 }}><FLabel>Action</FLabel>
             <div style={{ display: 'flex', gap: 8 }}>
-              {['buy', 'sell'].map(v => <button key={v} onClick={() => setNt(h => ({ ...h, type: v }))} style={{ flex: 1, padding: '9px', border: `1px solid ${nt.type === v ? (v === 'buy' ? 'var(--green)' : 'var(--red)') : 'var(--border)'}`, borderRadius: 6, background: nt.type === v ? (v === 'buy' ? '#0d2a1f' : '#2d0a12') : 'var(--surface2)', color: nt.type === v ? (v === 'buy' ? 'var(--green)' : 'var(--red)') : 'var(--muted)', cursor: 'pointer', fontFamily: 'Syne', fontSize: 13, fontWeight: 700, transition: 'all 0.15s' }}>{v === 'buy' ? '▲ Buy' : '▼ Sell'}</button>)}
+              {['buy', 'sell'].map(v => (
+                <button key={v} onClick={() => setNt(h => ({ ...h, type: v }))} style={{ flex: 1, padding: '9px', border: `1px solid ${nt.type === v ? (v === 'buy' ? 'var(--green)' : 'var(--red)') : 'var(--border)'}`, borderRadius: 6, background: nt.type === v ? (v === 'buy' ? '#0d2a1f' : '#2d0a12') : 'var(--surface2)', color: nt.type === v ? (v === 'buy' ? 'var(--green)' : 'var(--red)') : 'var(--muted)', cursor: 'pointer', fontFamily: 'Syne', fontSize: 13, fontWeight: 700, transition: 'all 0.15s' }}>
+                  {v === 'buy' ? '▲ Buy' : '▼ Sell'}
+                </button>
+              ))}
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {[
-              { k: 'date', l: 'Date', t: 'date' }, { k: 'symbol', l: 'Symbol', ph: 'AAPL' },
-              { k: 'qty', l: 'Quantity', ph: '5', t: 'number' }, { k: 'price', l: 'Price / unit (USD)', ph: '189', t: 'number' },
-              { k: 'fee', l: 'Brokerage Fee (USD)', ph: '5', t: 'number' }, { k: 'note', l: 'Note (optional)', ph: 'Rebalance' },
+              { k: 'date',     l: 'Date',                       t: 'date' },
+              { k: 'symbol',   l: 'Symbol',                     ph: 'ASML.AS' },
+              { k: 'qty',      l: 'Aantal (Quantity)',           ph: '5',  t: 'number' },
+              { k: 'priceEur', l: 'Prijs per stuk (€)',         ph: '189', t: 'number' },
+              { k: 'fee',      l: 'Transactiekosten (€)',        ph: '5',  t: 'number' },
+              { k: 'note',     l: 'Notitie (optioneel)',         ph: 'Rebalance' },
             ].map(f => <div key={f.k}><FLabel>{f.l}</FLabel><Inp value={nt[f.k]} onChange={e => setNt(h => ({ ...h, [f.k]: e.target.value }))} placeholder={f.ph || ''} type={f.t || 'text'} /></div>)}
           </div>
           <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--surface2)', borderRadius: 6, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', textTransform: 'uppercase', letterSpacing: '1px' }}>Est. Total (EUR)</span>
-            <span style={{ fontFamily: 'DM Mono', fontSize: 14 }}>{fmtE(u2e((+nt.qty || 0) * (+nt.price || 0) + (+nt.fee || 0)))}</span>
+            <span style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', textTransform: 'uppercase', letterSpacing: '1px' }}>Totaal (incl. kosten)</span>
+            <span style={{ fontFamily: 'DM Mono', fontSize: 14 }}>{fmtE((+nt.qty || 0) * (+nt.priceEur || 0) + (+nt.fee || 0))}</span>
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}><Btn label="Cancel" onClick={() => setShowAddT(false)} style={{ flex: 1 }} /><Btn label={`Log ${nt.type === 'buy' ? 'Purchase' : 'Sale'}`} variant="accent" onClick={addTxn} style={{ flex: 1 }} /></div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+            <Btn label="Annuleer" onClick={() => setShowAddT(false)} style={{ flex: 1 }} />
+            <Btn label={`${nt.type === 'buy' ? 'Aankoop' : 'Verkoop'} registreren`} variant="accent" onClick={addTxn} style={{ flex: 1 }} />
+          </div>
         </Modal>
       )}
 
-      {/* Profile Modal */}
+      {/* ── Profile Modal ── */}
       {showProfile && (
         <Modal title="Account" onClose={() => setShowProfile(false)} width={340}>
-          <div style={{ fontFamily: 'DM Mono', fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Signed in as</div>
+          <div style={{ fontFamily: 'DM Mono', fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Ingelogd als</div>
           <div style={{ fontFamily: 'DM Mono', fontSize: 13, color: 'var(--text)', marginBottom: 20, padding: '8px 12px', background: 'var(--surface2)', borderRadius: 6 }}>{user.email}</div>
-          <Btn label="Sign Out" variant="danger" onClick={async () => { await sb.auth.signOut(); setShowProfile(false) }} style={{ width: '100%' }} />
+          <Btn label="Uitloggen" variant="danger" onClick={async () => { await sb.auth.signOut(); setShowProfile(false) }} style={{ width: '100%' }} />
         </Modal>
       )}
     </div>
