@@ -293,24 +293,44 @@ function nativeCurrency(symbol, type) {
 }
 
 // ── Price + metadata fetching ──────────────────────────────────────────────
-// yahooQuote returns full metadata including dividend yield and price
+// yahooQuote calls the v7 quote endpoint which includes dividend yield data.
+// Response structure: { quoteResponse: { result: [{ regularMarketPrice, currency,
+//   trailingAnnualDividendRate, trailingAnnualDividendYield }] } }
 async function yahooQuote(symbol) {
   const ySym = toYahooSymbol(symbol)
   if (!ySym) return null
   try {
-    const r    = await fetch(`/api/yahoo?symbol=${encodeURIComponent(ySym)}`)
+    const r = await fetch(`/api/yahoo?symbol=${encodeURIComponent(ySym)}`)
     if (!r.ok) return null
-    const d    = await r.json()
-    const meta = d?.chart?.result?.[0]?.meta
-    if (!meta?.regularMarketPrice || meta.regularMarketPrice <= 0) return null
-    return {
-      price:         meta.regularMarketPrice,
-      currency:      (meta.currency || 'EUR').toUpperCase(),
-      // trailingAnnualDividendYield is already a ratio (e.g. 0.013 = 1.3%)
-      dividendYield: meta.trailingAnnualDividendYield
-        ? parseFloat((meta.trailingAnnualDividendYield * 100).toFixed(2))
-        : null,
+    const d = await r.json()
+
+    // v7 quote format
+    const q = d?.quoteResponse?.result?.[0]
+    if (q?.regularMarketPrice && q.regularMarketPrice > 0) {
+      return {
+        price:         q.regularMarketPrice,
+        currency:      (q.currency || 'EUR').toUpperCase(),
+        // trailingAnnualDividendYield is a decimal ratio (0.013 = 1.3%)
+        dividendYield: q.trailingAnnualDividendYield != null && q.trailingAnnualDividendYield > 0
+          ? parseFloat((q.trailingAnnualDividendYield * 100).toFixed(2))
+          : null,
+        // trailingAnnualDividendRate is the annual $ amount per share
+        dividendRate: q.trailingAnnualDividendRate || null,
+      }
     }
+
+    // Fallback: v8 chart format (when v7 fails and proxy falls back)
+    const meta = d?.chart?.result?.[0]?.meta
+    if (meta?.regularMarketPrice && meta.regularMarketPrice > 0) {
+      return {
+        price:         meta.regularMarketPrice,
+        currency:      (meta.currency || 'EUR').toUpperCase(),
+        dividendYield: null,
+        dividendRate:  null,
+      }
+    }
+
+    return null
   } catch { return null }
 }
 
@@ -332,24 +352,34 @@ export async function fetchPrice(symbol, type, fxRates = DEFAULT_FX) {
 
 // Fetches price AND dividend yield from Yahoo in one call (saves API calls)
 export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
-  // For ETFs: check our curated ETF_DATA first for TER and yield
-  const etfKey = resolveEtf(symbol)
+  // For ETFs: curated ETF_DATA provides TER and can supplement dividend data
+  const etfKey  = resolveEtf(symbol)
   const etfMeta = etfKey ? ETF_DATA[etfKey] : null
 
+  // Primary: Yahoo v7 quote — has price + trailingAnnualDividendYield
   try {
     const q = await yahooQuote(symbol)
     if (q && q.price > 0) {
       const priceEUR = toEUR(q.price, q.currency, fxRates)
+
+      // Dividend yield: prefer Yahoo's trailing yield %
+      // If Yahoo only gives the annual rate (not yield %), calculate it from price
+      let divYield = q.dividendYield  // already in % (e.g. 1.3)
+      if (divYield == null && q.dividendRate && q.dividendRate > 0 && priceEUR > 0) {
+        const rateEUR = toEUR(q.dividendRate, q.currency, fxRates)
+        divYield = parseFloat(((rateEUR / priceEUR) * 100).toFixed(2))
+      }
+
       return {
         price:         priceEUR,
-        dividendYield: q.dividendYield ?? (etfMeta ? null : null),
-        // For ETFs, annual_fee comes from curated data — Yahoo doesn't provide TER
+        dividendYield: divYield,
+        // TER from curated data — Yahoo does not provide expense ratios
         annualFee:     etfMeta ? etfMeta.ter : null,
       }
     }
   } catch {}
 
-  // Fallback: Finnhub for price only
+  // Fallback: Finnhub for price only (no dividend data available)
   try {
     const sym = toFinnhubSymbol(symbol, type)
     const r   = await fetch(`${FINNHUB}/quote&symbol=${sym}`)
