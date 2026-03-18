@@ -1,0 +1,21 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { min-height: 100vh; background: #080c10; }
+:root {
+  --bg: #080c10; --surface: #0d1218; --surface2: #111820;
+  --border: #1e2d3d; --border2: #243447;
+  --text: #e8edf2; --muted: #5a7a96;
+  --accent: #00d4aa; --accent2: #f7931a;
+  --red: #ff4d6d; --green: #00d4aa; --yellow: #ffd166; --blue: #4ea8de;
+  --font-display: 'DM Serif Display', serif;
+  --font-mono: 'DM Mono', monospace;
+  --font-ui: 'Syne', sans-serif;
+}
+body { color: var(--text); font-family: var(--font-ui); }
+input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.5); }
+select option { background: #0d1218; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #080c10; }
+::-webkit-scrollbar-thumb { background: #1e2d3d; border-radius: 3px; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.3s ease forwards; }
