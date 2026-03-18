@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { sb, ETF_HOLDINGS, COLORS, delay, fetchPrice, fetchDividends, fetchEurRate } from './config.js'
+import { sb, ETF_HOLDINGS, COLORS, delay, fetchPrice, fetchDividends, fetchEurRate, FINNHUB_KEY, FINNHUB } from './config.js'
 import { Card, SLabel, Btn, FLabel, Inp, Sel, Modal, thS, Td, fmtE, fmtN, pct } from './ui.jsx'
 import AuthScreen from './AuthScreen.jsx'
 
@@ -114,27 +114,81 @@ export default function App() {
     if (!nh.isin || nh.isin.length < 10) return
     setIsinLookup('loading')
     try {
-      const r = await fetch('https://api.openfigi.com/v3/mapping', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify([{ idType: 'ID_ISIN', idValue: nh.isin.toUpperCase() }])
-      })
+      // Step 1: Use Finnhub symbol lookup by ISIN — works for EU, NL, DE, FR etc.
+      const r = await fetch(`${FINNHUB}/search?q=${nh.isin.toUpperCase()}&token=${FINNHUB_KEY}`)
       const d = await r.json()
-      const match = d?.[0]?.data?.[0]
-      if (match) {
-        const sym = match.ticker || ''
-        const name = match.name || ''
-        const type = match.securityType2 === 'ETF' ? 'etf' : match.securityType2 === 'Crypto' ? 'crypto' : 'stock'
-        setNh(h => ({ ...h, symbol: sym, name, type }))
+      const results = d?.result || []
+
+      // Prefer exact ISIN match, then best description match
+      // Finnhub returns multiple listings (e.g. same stock on AMS, XETRA, NYSE)
+      // Priority: home exchange (AMS for NL, XETRA for DE), then US listing
+      const isinUpper = nh.isin.toUpperCase()
+      const countryCode = isinUpper.slice(0, 2)
+
+      // Exchange preference by country
+      const prefExchange = {
+        NL: ['AS', 'AMS', 'XAMS'],   // Amsterdam
+        DE: ['XETRA', 'DE', 'GR'],   // Xetra / Frankfurt
+        FR: ['PA', 'XPAR'],          // Paris
+        BE: ['BR', 'XBRU'],          // Brussels
+        IT: ['MI', 'XMIL'],          // Milan
+        ES: ['MC', 'XMAD'],          // Madrid
+        GB: ['L', 'LSE', 'XLON'],    // London
+        IE: ['ISE'],                  // Dublin
+        LU: ['LU'],                   // Luxembourg
+        US: ['US', 'XNYS', 'XNAS'],  // US exchanges
+      }
+      const preferred = prefExchange[countryCode] || []
+
+      let best = null
+      // First try preferred exchange
+      for (const ex of preferred) {
+        best = results.find(r => r.symbol?.includes(ex) || r.displaySymbol?.includes('.'+ex))
+        if (best) break
+      }
+      // Fall back to first result
+      if (!best) best = results[0]
+
+      if (best) {
+        const sym = best.symbol || best.displaySymbol || ''
+        const name = best.description || ''
+        const type = best.type === 'ETF' ? 'etf' : best.type === 'Crypto' ? 'crypto' : 'stock'
+
+        // Try to get sector from profile
+        let sector = nh.sector
+        try {
+          const pr = await fetch(`${FINNHUB}/stock/profile2?symbol=${sym}&token=${FINNHUB_KEY}`)
+          const pd = await pr.json()
+          if (pd.finnhubIndustry) sector = pd.finnhubIndustry
+        } catch {}
+
+        setNh(h => ({ ...h, symbol: sym, name, type, sector }))
+
+        // Fetch live price
         const price = await fetchPrice(sym, type)
         if (price) setNh(h => ({ ...h, currentPrice: String(price) }))
+
+        // Store all results so user can pick if multiple exchanges found
+        setIsinResults(results.slice(0, 6))
         setIsinLookup('found')
       } else {
         setIsinLookup('notfound')
       }
-    } catch {
+    } catch (e) {
+      console.error(e)
       setIsinLookup('notfound')
     }
+  }
+
+  const [isinResults, setIsinResults] = useState([])
+
+  const selectIsinResult = async (result) => {
+    const sym = result.symbol || result.displaySymbol || ''
+    const name = result.description || ''
+    const type = result.type === 'ETF' ? 'etf' : 'stock'
+    setNh(h => ({ ...h, symbol: sym, name, type }))
+    const price = await fetchPrice(sym, type)
+    if (price) setNh(h => ({ ...h, currentPrice: String(price) }))
   }
 
   const addHolding = async () => {
@@ -674,8 +728,37 @@ export default function App() {
                 {isinLookup === 'loading' ? '…' : '🔍 Lookup'}
               </button>
             </div>
-            {isinLookup === 'found' && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent)', fontFamily: 'DM Mono' }}>✓ Found: {nh.name} ({nh.symbol}){nh.currentPrice ? ` · $${parseFloat(nh.currentPrice).toFixed(2)}` : ''}</div>}
-            {isinLookup === 'notfound' && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', fontFamily: 'DM Mono' }}>⚠ Not found — enter symbol manually below</div>}
+            {isinLookup === 'found' && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'DM Mono', marginBottom: 6 }}>
+                  ✓ Selected: <strong>{nh.name}</strong> ({nh.symbol}){nh.currentPrice ? ` · $${parseFloat(nh.currentPrice).toFixed(2)}` : ''}
+                </div>
+                {isinResults.length > 1 && (
+                  <div>
+                    <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>
+                      Found on {isinResults.length} exchanges — tap to switch:
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {isinResults.map((r, i) => (
+                        <button key={i} onClick={() => selectIsinResult(r)} style={{
+                          padding: '3px 9px', borderRadius: 4, border: `1px solid ${nh.symbol === r.symbol ? 'var(--accent)' : 'var(--border2)'}`,
+                          background: nh.symbol === r.symbol ? '#0d2a1f' : 'var(--surface2)',
+                          color: nh.symbol === r.symbol ? 'var(--accent)' : 'var(--muted)',
+                          fontFamily: 'DM Mono', fontSize: 10, cursor: 'pointer'
+                        }}>
+                          {r.symbol}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {isinLookup === 'notfound' && (
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', fontFamily: 'DM Mono' }}>
+                ⚠ ISIN not found — try entering the ticker symbol manually below
+              </div>
+            )}
           </div>
 
           {/* Manual fields */}
