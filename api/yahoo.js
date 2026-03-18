@@ -1,9 +1,5 @@
 // api/yahoo.js — Vercel serverless function
-// Uses Yahoo Finance v7 quote endpoint which includes:
-//   - regularMarketPrice (current price)
-//   - trailingAnnualDividendRate (annual dividend per share, in native currency)
-//   - trailingAnnualDividendYield (annual yield as decimal, e.g. 0.013 = 1.3%)
-//   - currency
+// Uses Yahoo Finance v7 quote endpoint for price + dividend data
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -13,48 +9,70 @@ export default async function handler(req, res) {
   const { symbol } = req.query
   if (!symbol) { res.status(400).json({ error: 'Missing symbol' }); return }
 
-  // v7 quote endpoint — has fundamental data including dividend yield
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,currency,trailingAnnualDividendRate,trailingAnnualDividendYield,shortName,longName`
+  // Try multiple Yahoo endpoints in order
+  const endpoints = [
+    // v7 quote — has trailingAnnualDividendYield
+    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`,
+    `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`,
+  ]
 
-  try {
-    const r = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-      }
-    })
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://finance.yahoo.com/',
+    'Origin': 'https://finance.yahoo.com',
+  }
 
-    if (!r.ok) {
-      // Fallback to v8 chart endpoint for price-only
-      const r2 = await fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`,
-        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }
-      )
-      if (!r2.ok) { res.status(r.status).json({ error: `Yahoo returned ${r.status}` }); return }
-      const data2 = await r2.json()
-      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300')
-      // Wrap in same structure as v7 for consistent parsing
-      const meta = data2?.chart?.result?.[0]?.meta
-      if (meta?.regularMarketPrice) {
+  for (const url of endpoints) {
+    try {
+      const r = await fetch(url, { headers })
+      if (!r.ok) continue
+
+      const data = await r.json()
+      const quote = data?.quoteResponse?.result?.[0]
+
+      if (quote?.regularMarketPrice) {
+        // No cache — always fetch fresh data for accuracy
+        res.setHeader('Cache-Control', 'no-store')
         return res.status(200).json({
           quoteResponse: {
             result: [{
-              regularMarketPrice: meta.regularMarketPrice,
-              currency: meta.currency || 'USD',
-              trailingAnnualDividendRate: null,
-              trailingAnnualDividendYield: null,
+              regularMarketPrice:          quote.regularMarketPrice,
+              currency:                    quote.currency || 'USD',
+              trailingAnnualDividendRate:  quote.trailingAnnualDividendRate  ?? null,
+              trailingAnnualDividendYield: quote.trailingAnnualDividendYield ?? null,
+              shortName:                   quote.shortName || '',
             }]
           }
         })
       }
-      return res.status(502).json({ error: 'No price data' })
-    }
-
-    const data = await r.json()
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300')
-    res.status(200).json(data)
-  } catch (err) {
-    res.status(502).json({ error: 'Yahoo fetch failed', detail: err.message })
+    } catch {}
   }
+
+  // Final fallback: v8 chart endpoint (price only, no dividend data)
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`
+    const r = await fetch(url, { headers: { 'User-Agent': headers['User-Agent'], 'Accept': 'application/json' } })
+    if (r.ok) {
+      const data = await r.json()
+      const meta = data?.chart?.result?.[0]?.meta
+      if (meta?.regularMarketPrice) {
+        res.setHeader('Cache-Control', 'no-store')
+        return res.status(200).json({
+          quoteResponse: {
+            result: [{
+              regularMarketPrice:          meta.regularMarketPrice,
+              currency:                    meta.currency || 'USD',
+              trailingAnnualDividendRate:  null,
+              trailingAnnualDividendYield: null,
+              shortName:                   '',
+            }]
+          }
+        })
+      }
+    }
+  } catch {}
+
+  res.status(502).json({ error: 'No price data available for ' + symbol })
 }
