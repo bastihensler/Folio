@@ -40,19 +40,84 @@ export const COLORS = ['#00d4aa','#4ea8de','#f7931a','#ffd166','#ff4d6d','#c77df
 
 export const delay = ms => new Promise(r => setTimeout(r, ms))
 
+// Maps Yahoo/Finnhub suffix → Finnhub exchange mic prefix
+// Finnhub quote endpoint uses MIC prefix format: XAMS:ASML, XETR:SAP etc.
+const SUFFIX_TO_MIC = {
+  'AS':  'XAMS',   // Amsterdam (NL)
+  'AMS': 'XAMS',
+  'DE':  'XETR',   // Xetra / Frankfurt (DE)
+  'GR':  'XETR',
+  'PA':  'XPAR',   // Paris (FR)
+  'BR':  'XBRU',   // Brussels (BE)
+  'MI':  'XMIL',   // Milan (IT)
+  'MC':  'XMAD',   // Madrid (ES)
+  'L':   'XLON',   // London (GB)
+  'SW':  'XSWX',   // Zurich (CH)
+  'ST':  'XSTO',   // Stockholm (SE)
+  'OL':  'XOSL',   // Oslo (NO)
+  'CO':  'XCSE',   // Copenhagen (DK)
+  'HE':  'XHEL',   // Helsinki (FI)
+  'VI':  'XWBO',   // Vienna (AT)
+  'LS':  'XLIS',   // Lisbon (PT)
+  'AT':  'XATH',   // Athens (GR)
+  'WA':  'XWAR',   // Warsaw (PL)
+  'PR':  'XPRA',   // Prague (CZ)
+  'IS':  'XIST',   // Istanbul (TR)
+  'TA':  'XTAE',   // Tel Aviv (IL)
+  'T':   'XTSE',   // Toronto (CA)
+  'TO':  'XTSE',
+  'AX':  'XASX',   // Sydney (AU)
+  'HK':  'XHKG',   // Hong Kong
+}
+
+function normaliseSymbol(symbol, type) {
+  if (type === 'crypto') return CRYPTO_MAP[symbol] || `BINANCE:${symbol}USDT`
+  if (!symbol) return symbol
+
+  // Already has a MIC prefix like XAMS:ASML — pass through
+  if (symbol.includes(':')) return symbol
+
+  // Has a suffix like ASML.AS → convert to XAMS:ASML
+  const dotIdx = symbol.lastIndexOf('.')
+  if (dotIdx > 0) {
+    const base   = symbol.slice(0, dotIdx)
+    const suffix = symbol.slice(dotIdx + 1).toUpperCase()
+    const mic    = SUFFIX_TO_MIC[suffix]
+    if (mic) return `${mic}:${base}`
+    // Unknown suffix — try as-is and let Finnhub handle it
+    return symbol
+  }
+
+  // Plain US ticker — no conversion needed
+  return symbol
+}
+
 export async function fetchPrice(symbol, type) {
   try {
-    const sym = type === 'crypto' ? (CRYPTO_MAP[symbol] || `BINANCE:${symbol}USDT`) : symbol
+    const sym = normaliseSymbol(symbol, type)
     const r = await fetch(`${FINNHUB}/quote?symbol=${sym}&token=${FINNHUB_KEY}`)
     const d = await r.json()
-    return d.c || null
+    // d.c === 0 means not found or market closed with no data — treat as null
+    // d.c > 0 means a real price
+    if (d.c && d.c > 0) return d.c
+
+    // If MIC prefix didn't work, try the raw symbol as fallback
+    if (sym !== symbol) {
+      const r2 = await fetch(`${FINNHUB}/quote?symbol=${symbol}&token=${FINNHUB_KEY}`)
+      const d2 = await r2.json()
+      if (d2.c && d2.c > 0) return d2.c
+    }
+
+    return null
   } catch { return null }
 }
 
 export async function fetchDividends(symbol) {
   try {
+    // Use normalised symbol (MIC prefix) for European stocks
+    const sym = normaliseSymbol(symbol, 'stock')
     const from = new Date(); from.setFullYear(from.getFullYear() - 1)
-    const r = await fetch(`${FINNHUB}/stock/dividend?symbol=${symbol}&from=${from.toISOString().slice(0,10)}&to=${new Date().toISOString().slice(0,10)}&token=${FINNHUB_KEY}`)
+    const r = await fetch(`${FINNHUB}/stock/dividend?symbol=${sym}&from=${from.toISOString().slice(0,10)}&to=${new Date().toISOString().slice(0,10)}&token=${FINNHUB_KEY}`)
     const d = await r.json()
     return Array.isArray(d) ? d : []
   } catch { return [] }
