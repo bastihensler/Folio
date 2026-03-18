@@ -304,18 +304,18 @@ async function yahooQuote(symbol) {
     if (!r.ok) return null
     const d = await r.json()
 
-    // v7 quote format
+    // v7 quote format — proxy returns normalised structure
     const q = d?.quoteResponse?.result?.[0]
     if (q?.regularMarketPrice && q.regularMarketPrice > 0) {
       return {
-        price:         q.regularMarketPrice,
-        currency:      (q.currency || 'EUR').toUpperCase(),
-        // trailingAnnualDividendYield is a decimal ratio (0.013 = 1.3%)
-        dividendYield: q.trailingAnnualDividendYield != null && q.trailingAnnualDividendYield > 0
-          ? parseFloat((q.trailingAnnualDividendYield * 100).toFixed(2))
+        price:        q.regularMarketPrice,
+        currency:     (q.currency || 'EUR').toUpperCase(),
+        // trailingAnnualDividendYield from Yahoo is a decimal (0.013 = 1.3%)
+        // Note: do NOT multiply by 100 here — fetchPriceAndYield does that
+        dividendYield: (q.trailingAnnualDividendYield != null && q.trailingAnnualDividendYield > 0)
+          ? q.trailingAnnualDividendYield
           : null,
-        // trailingAnnualDividendRate is the annual $ amount per share
-        dividendRate: q.trailingAnnualDividendRate || null,
+        dividendRate:  q.trailingAnnualDividendRate || null,
       }
     }
 
@@ -352,20 +352,21 @@ export async function fetchPrice(symbol, type, fxRates = DEFAULT_FX) {
 
 // Fetches price AND dividend yield from Yahoo in one call (saves API calls)
 export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
-  // For ETFs: curated ETF_DATA provides TER and can supplement dividend data
   const etfKey  = resolveEtf(symbol)
   const etfMeta = etfKey ? ETF_DATA[etfKey] : null
 
-  // Primary: Yahoo v7 quote — has price + trailingAnnualDividendYield
+  // Primary: Yahoo v7 — price + trailingAnnualDividendYield
   try {
     const q = await yahooQuote(symbol)
     if (q && q.price > 0) {
       const priceEUR = toEUR(q.price, q.currency, fxRates)
 
-      // Dividend yield: prefer Yahoo's trailing yield %
-      // If Yahoo only gives the annual rate (not yield %), calculate it from price
-      let divYield = q.dividendYield  // already in % (e.g. 1.3)
-      if (divYield == null && q.dividendRate && q.dividendRate > 0 && priceEUR > 0) {
+      // Yahoo returns yield as decimal (0.013 = 1.3%) — convert to %
+      let divYield = null
+      if (q.dividendYield != null && q.dividendYield > 0) {
+        divYield = parseFloat((q.dividendYield * 100).toFixed(2))
+      } else if (q.dividendRate != null && q.dividendRate > 0 && priceEUR > 0) {
+        // Fallback: calculate from annual rate / price
         const rateEUR = toEUR(q.dividendRate, q.currency, fxRates)
         divYield = parseFloat(((rateEUR / priceEUR) * 100).toFixed(2))
       }
@@ -373,13 +374,14 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
       return {
         price:         priceEUR,
         dividendYield: divYield,
-        // TER from curated data — Yahoo does not provide expense ratios
-        annualFee:     etfMeta ? etfMeta.ter : null,
+        annualFee:     etfMeta?.ter ?? null,
       }
     }
-  } catch {}
+  } catch (e) {
+    console.warn('[fetchPriceAndYield] Yahoo error for', symbol, e?.message)
+  }
 
-  // Fallback: Finnhub for price only (no dividend data available)
+  // Fallback: Finnhub (price only)
   try {
     const sym = toFinnhubSymbol(symbol, type)
     const r   = await fetch(`${FINNHUB}/quote&symbol=${sym}`)
@@ -388,7 +390,7 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
       return {
         price:         toEUR(d.c, nativeCurrency(symbol, type), fxRates),
         dividendYield: null,
-        annualFee:     etfMeta ? etfMeta.ter : null,
+        annualFee:     etfMeta?.ter ?? null,
       }
     }
   } catch {}
