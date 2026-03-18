@@ -171,7 +171,7 @@ export default function App() {
   }
 
   // ── Add Holding ───────────────────────────────────────────────────────
-  const emptyNh = { isin: '', symbol: '', name: '', type: 'stock', qty: '', avgCostEur: '', currentPrice: '', sector: 'Technology', annualFee: '0', dividendYield: '0' }
+  const emptyNh = { isin: '', symbol: '', name: '', type: 'stock', qty: '', avgCostEur: '', currentPrice: '', sector: '', annualFee: '', dividendYield: '' }
   const [nh, setNh] = useState(emptyNh)
 
   const resetAddHolding = () => {
@@ -218,10 +218,27 @@ export default function App() {
           if (pd.finnhubIndustry) sector = pd.finnhubIndustry
         } catch {}
 
-        setNh(h => ({ ...h, symbol: sym, name, type, sector }))
-        const price = await fetchPrice(sym, type, fxRates)
-        // Price is already in EUR from fetchPrice
-        if (price) setNh(h => ({ ...h, currentPrice: String(price) }))
+        // Auto-fill TER and sector from ETF_DATA for known ETFs
+        const etfKey  = type === 'etf' ? resolveEtf(sym) : null
+        const etfMeta = etfKey ? ETF_DATA[etfKey] : null
+        const autoFee = etfMeta ? String(etfMeta.ter) : ''
+        // For ETFs, use primary sector (highest weighted). For stocks use Finnhub sector.
+        const autoSector = etfMeta
+          ? Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] || sector
+          : sector
+
+        setNh(h => ({ ...h, symbol: sym, name, type, sector: autoSector, annualFee: autoFee }))
+
+        // Fetch live price + dividend yield in one call
+        const priceData = await fetchPriceAndYield(sym, type, fxRates)
+        if (priceData?.price) {
+          setNh(h => ({
+            ...h,
+            currentPrice:  String(priceData.price),
+            dividendYield: priceData.dividendYield != null ? String(priceData.dividendYield) : h.dividendYield,
+            annualFee:     priceData.annualFee    != null ? String(priceData.annualFee)    : h.annualFee,
+          }))
+        }
         setIsinResults(results.slice(0, 6))
         setIsinLookup('found')
       } else {
@@ -249,10 +266,18 @@ export default function App() {
     // avgCostEur is already in EUR — store directly
     const avgCostEUR = +nh.avgCostEur
     let price = nh.currentPrice ? +nh.currentPrice : await fetchPrice(sym, nh.type, fxRates) || 0
+    // Determine sector: use entered value, or ETF_DATA primary sector, or 'Other'
+    const etfKeyAdd  = nh.type === 'etf' ? resolveEtf(sym) : null
+    const etfMetaAdd = etfKeyAdd ? ETF_DATA[etfKeyAdd] : null
+    const finalSector = nh.sector ||
+      (etfMetaAdd ? Object.entries(etfMetaAdd.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] : null) ||
+      'Other'
+    const finalFee    = nh.annualFee !== '' ? +nh.annualFee : (etfMetaAdd ? etfMetaAdd.ter : 0)
+    const finalDiv    = nh.dividendYield !== '' ? +nh.dividendYield : 0
     const row = {
       user_id: user.id, symbol: sym, name: nh.name || sym, type: nh.type,
       qty: +nh.qty, avg_cost: avgCostEUR, current_price: price,
-      sector: nh.sector || 'Other', annual_fee: +nh.annualFee, dividend_yield: +nh.dividendYield
+      sector: finalSector, annual_fee: finalFee, dividend_yield: finalDiv
     }
     // Fix #9: check for DB errors
     const { data, error } = await sb.from('holdings').insert(row).select().single()
@@ -260,7 +285,7 @@ export default function App() {
     setHoldings(hs => [...hs, {
       id: data.id, symbol: sym, name: nh.name || sym, type: nh.type,
       qty: +nh.qty, avgCost: avgCostEUR, currentPrice: price,
-      sector: nh.sector || 'Other', annualFee: +nh.annualFee, dividendYield: +nh.dividendYield
+      sector: finalSector, annualFee: finalFee, dividendYield: finalDiv
     }])
     resetAddHolding()
     setShowAddH(false)
@@ -367,9 +392,31 @@ export default function App() {
     const tac = rows.reduce((s, r) => s + r.annCost, 0)
     const tad = rows.reduce((s, r) => s + r.annDiv, 0)
 
+    // For sector allocation: ETFs with curated data contribute their actual sector breakdown
+    // Direct stocks contribute their assigned sector
     const bySec = {}
-    rows.forEach(r => { bySec[r.sector] = (bySec[r.sector] || 0) + r.value })
-    const alloc = Object.entries(bySec).map(([name, value]) => ({ name, value, pct: (value / tv * 100).toFixed(1) }))
+    rows.forEach(r => {
+      if (r.type === 'etf') {
+        const etfKey = resolveEtf(r.symbol)
+        const etfSectors = etfKey ? ETF_DATA[etfKey]?.sectors : null
+        if (etfSectors) {
+          // Distribute ETF value across its sectors
+          Object.entries(etfSectors).forEach(([sector, pct]) => {
+            bySec[sector] = (bySec[sector] || 0) + r.value * (pct / 100)
+          })
+        } else {
+          // Unknown ETF — bucket as 'ETF (Mixed)'
+          bySec['ETF (Mixed)'] = (bySec['ETF (Mixed)'] || 0) + r.value
+        }
+      } else {
+        // Stock or crypto — use assigned sector, fallback to type label
+        const sec = r.sector && r.sector !== '' ? r.sector : (r.type === 'crypto' ? 'Crypto' : 'Other')
+        bySec[sec] = (bySec[sec] || 0) + r.value
+      }
+    })
+    const alloc = Object.entries(bySec)
+      .map(([name, value]) => ({ name, value, pct: (value / tv * 100).toFixed(1) }))
+      .sort((a, b) => b.value - a.value)
 
     const byType = { Stocks: 0, ETFs: 0, Crypto: 0 }
     rows.forEach(r => {
@@ -782,22 +829,46 @@ export default function App() {
               {C.etfSymbols.length === 0 && ' Add ETFs to see exposure analysis.'}
               </div>
               <Card>
-                <SLabel text="Top 12 Exposures — Total Portfolio Weight" />
-                <ResponsiveContainer width="100%" height={290}>
-                  <BarChart data={C.exposureRows.slice(0, 12).map(r => ({ symbol: r.symbol, Direct: parseFloat(r.directPct.toFixed(2)), ...Object.fromEntries(Object.entries(r.etfBreakdown).map(([e, v]) => ['via ' + e, parseFloat((v / C.totalValue * 100).toFixed(2))])) }))} layout="vertical" margin={{ left: 8, right: 36 }}>
-                    <XAxis type="number" tick={{ fill: '#5a7a96', fontSize: 9, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} tickFormatter={v => v + '%'} />
-                    <YAxis type="category" dataKey="symbol" tick={{ fill: '#e8edf2', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={40} />
-                    <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={(v, name) => [v + '%', name]} />
-                    <Bar dataKey="Direct" stackId="a" fill="#00d4aa" />
-                    <Bar dataKey="via VOO" stackId="a" fill="#4ea8de" />
-                    <Bar dataKey="via QQQ" stackId="a" fill="#f7931a" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-                <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
-                  {[{ c: '#00d4aa', l: 'Direct' }, { c: '#4ea8de', l: 'via VOO' }, { c: '#f7931a', l: 'via QQQ' }].map(({ c, l }) => (
-                    <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: c }} /><span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'DM Mono' }}>{l}</span></div>
-                  ))}
-                </div>
+                <SLabel text="Top 12 Stock Exposures — Total Portfolio Weight" />
+                {C.exposureRows.length === 0 ? (
+                  <div style={{ padding: '20px', color: 'var(--muted)', fontFamily: 'DM Mono', fontSize: 12 }}>
+                    No exposure data — add ETFs from the curated list (VWRL, IWDA, CSPX, VOO, QQQ etc.)
+                  </div>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height={Math.max(220, C.exposureRows.slice(0,12).length * 28)}>
+                      <BarChart
+                        data={C.exposureRows.slice(0, 12).map(r => ({
+                          symbol: r.symbol,
+                          Direct: parseFloat(r.directPct.toFixed(2)),
+                          ...Object.fromEntries(
+                            Object.entries(r.etfBreakdown).map(([etf, v]) => [
+                              'via ' + etf,
+                              parseFloat((v / C.totalValue * 100).toFixed(2))
+                            ])
+                          )
+                        }))}
+                        layout="vertical" margin={{ left: 8, right: 36 }}>
+                        <XAxis type="number" tick={{ fill: '#5a7a96', fontSize: 9, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} tickFormatter={v => v + '%'} />
+                        <YAxis type="category" dataKey="symbol" tick={{ fill: '#e8edf2', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} width={50} />
+                        <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={(v, name) => [v + '%', name]} />
+                        <Bar dataKey="Direct" stackId="a" fill="#00d4aa" />
+                        {C.etfSymbols.map((etf, i) => (
+                          <Bar key={etf} dataKey={"via " + etf} stackId="a" fill={COLORS[(i + 1) % COLORS.length]}
+                            radius={i === C.etfSymbols.length - 1 ? [0, 4, 4, 0] : [0,0,0,0]} />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+                      {[{ c: '#00d4aa', l: 'Direct' }, ...C.etfSymbols.map((etf, i) => ({ c: COLORS[(i+1) % COLORS.length], l: 'via ' + etf }))].map(({ c, l }) => (
+                        <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: 2, background: c }} />
+                          <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'DM Mono' }}>{l}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </Card>
               <Card>
                 <SLabel text="Full Exposure Breakdown" />
