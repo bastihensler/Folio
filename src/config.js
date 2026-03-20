@@ -252,15 +252,24 @@ export const ETF_DATA = {
   // ── Xtrackers Dividend ─────────────────────────────────────────────────
   'XGSD.DE': {
     name: 'Xtrackers STOXX Global Select Dividend 100', ter: 0.50,
-    sectors:  { Technology: 36.2, Industrials: 15.8, Financials: 9.4, Healthcare: 8.3, 'Real Estate': 6.3, Energy: 6.0, 'Consumer Defensive': 5.8, 'Consumer Cyclical': 5.7, 'Communication Services': 5.1, Materials: 0.9, Utilities: 0.7 },
+    sectors:  { Technology: 36.2, Industrials: 15.8, Financials: 9.4, Healthcare: 8.3, 'Real Estate': 6.3, Energy: 6.0, 'Consumer Staples': 5.8, 'Consumer Discretionary': 5.7, 'Communication Services': 5.1, Materials: 0.9, Utilities: 0.7 },
     countries: { 'United States': 38.4, Japan: 12.8, Australia: 10.2, 'United Kingdom': 8.4, Canada: 7.6, Germany: 5.2, France: 4.1, Switzerland: 3.8, Netherlands: 2.4, Other: 7.1 },
     holdings: [
-      { symbol: 'AAPL',    name: 'Apple Inc.',        weight: 8.90 },
-      { symbol: 'AVGO',    name: 'Broadcom Inc.',     weight: 7.88 },
-      { symbol: 'JDEP.AS', name: "JDE Peet's N.V.",  weight: 5.01 },
-      { symbol: 'MSFT',    name: 'Microsoft',         weight: 4.56 },
-      { symbol: 'FUTU',    name: 'Futu Holdings',     weight: 4.14 },
-      { symbol: 'TT',      name: 'Trane Technologies',weight: 2.91 },
+      { symbol: 'AAPL',    name: 'Apple Inc.',           weight: 8.90 },
+      { symbol: 'AVGO',    name: 'Broadcom Inc.',        weight: 7.88 },
+      { symbol: 'JDEP.AS', name: "JDE Peet's N.V.",     weight: 5.01 },
+      { symbol: 'MSFT',    name: 'Microsoft',            weight: 4.56 },
+      { symbol: 'FUTU',    name: 'Futu Holdings',        weight: 4.14 },
+      { symbol: 'TT',      name: 'Trane Technologies',   weight: 2.91 },
+      { symbol: 'EQNR.OL', name: 'Equinor ASA',         weight: 2.84 },
+      { symbol: 'UNH',     name: 'UnitedHealth Group',   weight: 2.76 },
+      { symbol: 'CAT',     name: 'Caterpillar Inc.',     weight: 2.61 },
+      { symbol: 'BCE.TO',  name: 'BCE Inc.',             weight: 2.44 },
+      { symbol: 'ENB.TO',  name: 'Enbridge Inc.',        weight: 2.38 },
+      { symbol: 'BHP.AX',  name: 'BHP Group',            weight: 2.21 },
+      { symbol: 'RIO.L',   name: 'Rio Tinto',            weight: 2.14 },
+      { symbol: 'TotalEnergies.PA', name: 'TotalEnergies', weight: 2.08 },
+      { symbol: '8031.T',  name: 'Mitsui & Co.',         weight: 1.94 },
     ],
   },
 }
@@ -270,14 +279,46 @@ export const ETF_ALIASES = {
   IWDA: 'IWDA.AS', CSPX: 'CSPX.AS',
   EMIM: 'EMIM.AS', XDWD: 'XDWD.DE',
   AIAG: 'AIAG.L',
-  XGSD: 'XGSD.DE', DXSB: 'XGSD.DE',  // Xtrackers STOXX Global Select Dividend 100
+  // Xtrackers STOXX Global Select Dividend 100 (ISIN: LU0292096186)
+  // Finnhub may return any of these for that ISIN:
+  XGSD: 'XGSD.DE', 'XGSD.DE': 'XGSD.DE',
+  DXSB: 'XGSD.DE', 'DXSB.DE': 'XGSD.DE',
   SPY:  'VOO',     IVV:  'VOO',
 }
 
-export function resolveEtf(symbol) {
-  if (!symbol) return null
-  const s = symbol.toUpperCase()
-  return ETF_DATA[s] ? s : (ETF_ALIASES[s] ? ETF_ALIASES[s] : null)
+// ISIN → ETF_DATA key mapping for direct ISIN lookups
+export const ISIN_TO_ETF = {
+  'LU0292096186': 'XGSD.DE',  // Xtrackers STOXX Global Select Dividend 100
+  'IE00B3RBWM25': 'VWRL.AS',  // Vanguard FTSE All-World
+  'IE00BK5BQT80': 'VWCE.DE',  // Vanguard FTSE All-World Acc
+  'IE00B4L5Y983': 'IWDA.AS',  // iShares Core MSCI World
+  'IE00B5BMR087': 'CSPX.AS',  // iShares Core S&P 500
+  'IE00BKM4GZ66': 'EMIM.AS',  // iShares Core MSCI EM IMI
+  'LU0274208692': 'XDWD.DE',  // Xtrackers MSCI World
+  'IE00B3F81R35': 'AIAG.L',   // L&G AI ETF
+}
+
+export function resolveEtf(symbolOrIsin) {
+  if (!symbolOrIsin) return null
+  const s = symbolOrIsin.toUpperCase()
+  // Direct key in ETF_DATA
+  if (ETF_DATA[s]) return s
+  // Alias lookup
+  if (ETF_ALIASES[s]) return ETF_ALIASES[s]
+  // ISIN lookup
+  if (ISIN_TO_ETF[symbolOrIsin]) return ISIN_TO_ETF[symbolOrIsin]
+  // Partial match: strip exchange suffix and try again (e.g. XGSD.XETR → XGSD.DE)
+  const dot = s.lastIndexOf('.')
+  if (dot > 0) {
+    const base = s.slice(0, dot)
+    if (ETF_ALIASES[base]) return ETF_ALIASES[base]
+    // Try with common suffixes
+    for (const suffix of ['DE', 'AS', 'L', 'PA']) {
+      const candidate = `${base}.${suffix}`
+      if (ETF_DATA[candidate]) return candidate
+    }
+  }
+  return null
 }
 
 export const ETF_HOLDINGS = Object.fromEntries(

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { sb, ETF_DATA, ETF_HOLDINGS, ETF_ALIASES, resolveEtf, stockCountry, COLORS, delay, fetchPrice, fetchPriceAndYield, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB } from './config.js'
+import { sb, ETF_DATA, ETF_HOLDINGS, ETF_ALIASES, ISIN_TO_ETF, resolveEtf, stockCountry, COLORS, delay, fetchPrice, fetchPriceAndYield, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB } from './config.js'
 import { Card, SLabel, Btn, FLabel, Inp, Sel, Modal, thS, Td, fmtE, fmtN, pct } from './ui.jsx'
 import AuthScreen from './AuthScreen.jsx'
 
@@ -262,9 +262,9 @@ export default function App() {
     setIsinResults([])  // Fix #4: always clear results
   }
 
-  const enrichSymbol = async (sym, type, name) => {
-    // 1. ETF_DATA lookup — curated data for known ETFs
-    const etfKey  = type === 'etf' ? resolveEtf(sym) : null
+  const enrichSymbol = async (sym, type, name, isin = '') => {
+    // 1. ETF_DATA lookup — try symbol first, then ISIN directly
+    const etfKey  = type === 'etf' ? (resolveEtf(sym) || resolveEtf(isin)) : null
     const etfMeta = etfKey ? ETF_DATA[etfKey] : null
 
     // 2. Finnhub stock profile for sector (stocks only)
@@ -345,7 +345,7 @@ export default function App() {
         const sym  = best.symbol || best.displaySymbol || ''
         const name = best.description || ''
         const type = best.type === 'ETF' ? 'etf' : best.type === 'Crypto' ? 'crypto' : 'stock'
-        const enriched = await enrichSymbol(sym, type, name)
+        const enriched = await enrichSymbol(sym, type, name, nh.isin || '')
         setNh(h => ({ ...h, ...enriched }))
         setIsinResults(results.slice(0, 6))
         setIsinLookup('found')
