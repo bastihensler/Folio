@@ -97,39 +97,24 @@ export default function App() {
         addLog(`Fetching ${h.symbol}…`)
         const data = await fetchPriceAndYield(h.symbol, h.type, activeFxRates)
 
-        if (!data?.price) {
-          addLog(`⚠ ${h.symbol}: no price found, keeping last value`)
-          return h
-        }
+        // ── Resolve ETF metadata first (independent of price fetch) ──
+        const etfKey  = h.type === 'etf' ? resolveEtf(h.symbol) : null
+        const etfMeta = etfKey ? ETF_DATA[etfKey] : null
 
-        const price = data.price
-
-        // Dividend yield: use Yahoo live yield, fallback to Finnhub dividends for stocks
-        let divYield = data.dividendYield ?? h.dividendYield
-        if (h.type === 'stock' && price && data.dividendYield == null) {
-          const divs = await fetchDividends(h.symbol, activeFxRates)
-          if (divs.length > 0) {
-            const annualEUR = divs.reduce((s, d) => s + (d.amountEUR || 0), 0)
-            divYield = parseFloat(((annualEUR / price) * 100).toFixed(2))
-          }
-        }
-        divYield = divYield ?? h.dividendYield
-
-        // TER: auto-fill from curated ETF_DATA for known ETFs
-        const annualFee = data.annualFee != null ? data.annualFee : h.annualFee
-
-        const parts = [`€${price.toFixed(2)}`]
-        if (divYield != null && divYield > 0) parts.push(`div ${divYield.toFixed(2)}%`)
-        if (data.annualFee != null) parts.push(`TER ${annualFee}%`)
-        addLog(`✓ ${h.symbol}: ${parts.join(' · ')}`)
-
-        // Also refresh sector, ETF holdings and sector breakdown
-        let freshSector = h.sector || ''
-        let freshEtfHoldings = h.etfHoldings || null
+        // ── Static data from ETF_DATA — always applied for known ETFs ──
+        let freshSector          = h.sector || ''
+        let freshEtfHoldings     = h.etfHoldings || null
         let freshSectorBreakdown = h.sectorBreakdown || null
+        let freshCountryBreakdown= h.countryBreakdown || null
+        let freshCountry         = h.type !== 'etf' ? (h.country || stockCountry(h.symbol)) : null
 
-        // For stocks: fetch sector from Finnhub profile if missing or stale
-        if (h.type === 'stock' && !h.sector) {
+        if (etfMeta) {
+          freshEtfHoldings      = etfMeta.holdings.slice(0, 50)
+          freshSectorBreakdown  = etfMeta.sectors
+          freshCountryBreakdown = etfMeta.countries || null
+          const topSec = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0]
+          if (topSec) freshSector = topSec
+        } else if (h.type === 'stock' && !h.sector) {
           try {
             const pr = await fetch(`${FINNHUB}/stock/profile2&symbol=${h.symbol}`)
             const pd = await pr.json()
@@ -137,25 +122,46 @@ export default function App() {
           } catch {}
         }
 
-        // For ETFs: refresh from ETF_DATA curated table (authoritative)
-        if (h.type === 'etf') {
-          const etfKey = resolveEtf(h.symbol)
-          const etfMeta = etfKey ? ETF_DATA[etfKey] : null
-          if (etfMeta) {
-            freshEtfHoldings = etfMeta.holdings.slice(0, 50)
-            freshSectorBreakdown = etfMeta.sectors
-            const topSector = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0]
-            if (topSector) freshSector = topSector
-          }
+        // ── TER: always from ETF_DATA for known ETFs, regardless of Yahoo ──
+        const annualFee = etfMeta ? etfMeta.ter : (data?.annualFee ?? h.annualFee)
+
+        // ── Price ──
+        if (!data?.price) {
+          // No price, but still save static ETF metadata and TER to DB
+          const { error } = await sb.from('holdings')
+            .update({
+              annual_fee:        annualFee,
+              sector:            freshSector || h.sector,
+              etf_holdings:      freshEtfHoldings,
+              sector_breakdown:  freshSectorBreakdown,
+              country_breakdown: freshCountryBreakdown,
+              country:           freshCountry,
+              updated_at:        new Date().toISOString()
+            })
+            .eq('id', h.id)
+          addLog(`⚠ ${h.symbol}: no price found${etfMeta ? ` · TER ${annualFee}%` : ''}`)
+          return { ...h, annualFee, sector: freshSector || h.sector, etfHoldings: freshEtfHoldings, sectorBreakdown: freshSectorBreakdown, countryBreakdown: freshCountryBreakdown, country: freshCountry }
         }
 
-        // Country: from ETF_DATA for ETFs, from stockCountry() for stocks
-        const freshCountryBreakdown = h.type === 'etf'
-          ? (etfMeta ? etfMeta.countries : h.countryBreakdown || null)
-          : null
-        const freshCountry = h.type !== 'etf'
-          ? (h.country || stockCountry(h.symbol))
-          : null
+        const price = data.price
+
+        // ── Dividend yield ──
+        let divYield = data.dividendYield ?? null
+        if (divYield == null && h.type === 'stock') {
+          // Try Finnhub dividend history for stocks
+          const divs = await fetchDividends(h.symbol, activeFxRates)
+          if (divs.length > 0) {
+            const annualEUR = divs.reduce((s, d) => s + (d.amountEUR || 0), 0)
+            divYield = parseFloat(((annualEUR / price) * 100).toFixed(2))
+          }
+        }
+        // Fall back to existing value if nothing found
+        if (divYield == null) divYield = h.dividendYield
+
+        const parts = [`€${price.toFixed(2)}`]
+        if (divYield > 0) parts.push(`div ${divYield.toFixed(2)}%`)
+        if (etfMeta) parts.push(`TER ${annualFee}%`)
+        addLog(`✓ ${h.symbol}: ${parts.join(' · ')}`)
 
         const { error } = await sb.from('holdings')
           .update({
@@ -467,7 +473,7 @@ export default function App() {
       totalAnnCost: 0, totalAnnDiv: 0, netAnnIncome: 0,
       allocationData: [], typeData: [], winners: [], losers: [],
       avgVol: 0, concentration: 0, txnRows: [], totalTxnFees: 0,
-      exposureRows: [], etfSymbols: []
+      exposureRows: [], etfSymbols: [], countryData: [], etfSectorData: []
     }
     if (!holdings.length) return empty
 
@@ -902,7 +908,7 @@ export default function App() {
 
           {/* ── ALLOCATION ── */}
           {tab === 'allocation' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 12, alignItems: 'start' }}>
               <Card>
                 <SLabel text="Sector Allocation" />
                 <ResponsiveContainer width="100%" height={230}>
@@ -937,7 +943,7 @@ export default function App() {
               </Card>
 
               {/* Country breakdown */}
-              {C.countryData.length > 0 && (
+              {C.countryData && C.countryData.length > 0 && (
                 <Card style={{ gridColumn: '1 / -1' }}>
                   <SLabel text="Country Exposure" />
                   <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginBottom: 12 }}>
