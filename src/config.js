@@ -248,6 +248,21 @@ export const ETF_DATA = {
       { symbol: 'SPOT',  name: 'Spotify',           weight: 6.94 },
     ],
   },
+
+  // ── Xtrackers Dividend ─────────────────────────────────────────────────
+  'XGSD.DE': {
+    name: 'Xtrackers STOXX Global Select Dividend 100', ter: 0.50,
+    sectors:  { Technology: 36.2, Industrials: 15.8, Financials: 9.4, Healthcare: 8.3, 'Real Estate': 6.3, Energy: 6.0, 'Consumer Defensive': 5.8, 'Consumer Cyclical': 5.7, 'Communication Services': 5.1, Materials: 0.9, Utilities: 0.7 },
+    countries: { 'United States': 38.4, Japan: 12.8, Australia: 10.2, 'United Kingdom': 8.4, Canada: 7.6, Germany: 5.2, France: 4.1, Switzerland: 3.8, Netherlands: 2.4, Other: 7.1 },
+    holdings: [
+      { symbol: 'AAPL',    name: 'Apple Inc.',        weight: 8.90 },
+      { symbol: 'AVGO',    name: 'Broadcom Inc.',     weight: 7.88 },
+      { symbol: 'JDEP.AS', name: "JDE Peet's N.V.",  weight: 5.01 },
+      { symbol: 'MSFT',    name: 'Microsoft',         weight: 4.56 },
+      { symbol: 'FUTU',    name: 'Futu Holdings',     weight: 4.14 },
+      { symbol: 'TT',      name: 'Trane Technologies',weight: 2.91 },
+    ],
+  },
 }
 
 export const ETF_ALIASES = {
@@ -255,6 +270,7 @@ export const ETF_ALIASES = {
   IWDA: 'IWDA.AS', CSPX: 'CSPX.AS',
   EMIM: 'EMIM.AS', XDWD: 'XDWD.DE',
   AIAG: 'AIAG.L',
+  XGSD: 'XGSD.DE', DXSB: 'XGSD.DE',  // Xtrackers STOXX Global Select Dividend 100
   SPY:  'VOO',     IVV:  'VOO',
 }
 
@@ -371,11 +387,14 @@ function nativeCurrency(symbol, type) {
   return 'USD'
 }
 
-async function yahooQuote(symbol) {
+async function yahooQuote(symbol, etfMode = false) {
   const ySym = toYahooSymbol(symbol)
   if (!ySym) return null
   try {
-    const r = await fetch(`/api/yahoo?symbol=${encodeURIComponent(ySym)}`)
+    const url = etfMode
+      ? `/api/yahoo?symbol=${encodeURIComponent(ySym)}&mode=etf`
+      : `/api/yahoo?symbol=${encodeURIComponent(ySym)}`
+    const r = await fetch(url)
     if (!r.ok) return null
     const d = await r.json()
     const q = d?.quoteResponse?.result?.[0]
@@ -386,11 +405,9 @@ async function yahooQuote(symbol) {
         dividendYield: (q.trailingAnnualDividendYield != null && q.trailingAnnualDividendYield > 0)
           ? q.trailingAnnualDividendYield : null,
         dividendRate: q.trailingAnnualDividendRate || null,
+        // ETF enrichment data from quoteSummary (only in etfMode)
+        etf: d.etf || null,
       }
-    }
-    const meta = d?.chart?.result?.[0]?.meta
-    if (meta?.regularMarketPrice && meta.regularMarketPrice > 0) {
-      return { price: meta.regularMarketPrice, currency: (meta.currency || 'EUR').toUpperCase(), dividendYield: null, dividendRate: null }
     }
     return null
   } catch { return null }
@@ -413,28 +430,51 @@ export async function fetchPrice(symbol, type, fxRates = DEFAULT_FX) {
 export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
   const etfKey  = resolveEtf(symbol)
   const etfMeta = etfKey ? ETF_DATA[etfKey] : null
+  const isEtf   = type === 'etf'
 
   try {
-    const q = await yahooQuote(symbol)
+    // Use ETF enrichment mode for ETFs — fetches holdings, sectors and TER from Yahoo
+    const q = await yahooQuote(symbol, isEtf)
     if (q && q.price > 0) {
       const priceEUR = toEUR(q.price, q.currency, fxRates)
+
+      // Dividend yield
       let divYield = null
       if (q.dividendYield != null && q.dividendYield > 0) {
         divYield = parseFloat((q.dividendYield * 100).toFixed(2))
+      } else if (q.etf?.divYield != null && q.etf.divYield > 0) {
+        divYield = q.etf.divYield
       } else if (q.dividendRate != null && q.dividendRate > 0 && priceEUR > 0) {
         const rateEUR = toEUR(q.dividendRate, q.currency, fxRates)
         divYield = parseFloat(((rateEUR / priceEUR) * 100).toFixed(2))
       }
-      return { price: priceEUR, dividendYield: divYield, annualFee: etfMeta?.ter ?? null }
+
+      // TER: curated ETF_DATA takes priority, then Yahoo quoteSummary, then null
+      const ter = etfMeta?.ter ?? q.etf?.ter ?? null
+
+      // Holdings and sectors: curated data first, then Yahoo live data
+      const holdings = etfMeta?.holdings ?? q.etf?.holdings ?? null
+      const sectors  = etfMeta?.sectors  ?? q.etf?.sectors  ?? null
+      const countries= etfMeta?.countries ?? null
+
+      return { price: priceEUR, dividendYield: divYield, annualFee: ter, holdings, sectors, countries }
     }
   } catch (e) { console.warn('[fetchPriceAndYield]', symbol, e?.message) }
 
+  // Finnhub fallback (price only)
   try {
     const sym = toFinnhubSymbol(symbol, type)
     const r   = await fetch(`${FINNHUB}/quote&symbol=${sym}`)
     const d   = await r.json()
     if (d.c > 0) {
-      return { price: toEUR(d.c, nativeCurrency(symbol, type), fxRates), dividendYield: null, annualFee: etfMeta?.ter ?? null }
+      return {
+        price: toEUR(d.c, nativeCurrency(symbol, type), fxRates),
+        dividendYield: null,
+        annualFee: etfMeta?.ter ?? null,
+        holdings: etfMeta?.holdings ?? null,
+        sectors:  etfMeta?.sectors  ?? null,
+        countries:etfMeta?.countries ?? null,
+      }
     }
   } catch {}
 

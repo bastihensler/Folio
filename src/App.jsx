@@ -114,6 +114,16 @@ export default function App() {
           freshCountryBreakdown = etfMeta.countries || null
           const topSec = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0]
           if (topSec) freshSector = topSec
+        } else if (data) {
+          // Unknown ETF: use live data from Yahoo quoteSummary
+          if (data.holdings) freshEtfHoldings     = data.holdings
+          if (data.sectors)  freshSectorBreakdown  = data.sectors
+          if (data.countries)freshCountryBreakdown = data.countries
+          if (data.sectors) {
+            const topSec = Object.entries(data.sectors).sort((a,b) => b[1]-a[1])[0]?.[0]
+            if (topSec) freshSector = topSec
+          }
+        }
         } else if (h.type === 'stock' && !h.sector) {
           try {
             const pr = await fetch(`${FINNHUB}/stock/profile2&symbol=${h.symbol}`)
@@ -273,10 +283,21 @@ export default function App() {
       sector = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] || ''
     }
 
-    // 3. Live price + dividend yield from Yahoo
+    // 3. Live price + dividend yield + ETF data from Yahoo (and ETF_DATA curated)
+    // fetchPriceAndYield now returns holdings/sectors/countries for ETFs
     const priceData = await fetchPriceAndYield(sym, type, fxRates)
 
     // 4. Assemble enriched holding
+    // Holdings/sectors/countries: prefer curated ETF_DATA, fall back to Yahoo live data
+    const etfHoldings = (etfMeta?.holdings ?? priceData?.holdings ?? null)?.slice(0, 50)
+    const sectors     = etfMeta?.sectors   ?? priceData?.sectors   ?? null
+    const countries   = etfMeta?.countries ?? priceData?.countries ?? null
+
+    // Primary sector for display (highest weighted)
+    if (type === 'etf' && sectors && !sector) {
+      sector = Object.entries(sectors).sort((a, b) => b[1] - a[1])[0]?.[0] || ''
+    }
+
     return {
       symbol:       sym,
       name:         name || sym,
@@ -285,13 +306,12 @@ export default function App() {
       currency:     priceData?.currency || 'EUR',
       currentPrice: priceData?.price    ? String(priceData.price.toFixed(2)) : '',
       dividendYield:priceData?.dividendYield != null ? String(priceData.dividendYield) : '',
-      annualFee:    priceData?.annualFee != null
-        ? String(priceData.annualFee)
-        : etfMeta ? String(etfMeta.ter) : '',
-      etfHoldings:  etfMeta ? etfMeta.holdings.slice(0, 50) : null,
-      sectors:      etfMeta ? etfMeta.sectors   : null,
-      countries:    etfMeta ? etfMeta.countries : null,
-      // For direct stocks, derive country from symbol/exchange
+      annualFee:    priceData?.annualFee != null ? String(priceData.annualFee)
+                  : etfMeta             ? String(etfMeta.ter)
+                  : '',
+      etfHoldings,
+      sectors,
+      countries,
       country:      type !== 'etf' ? stockCountry(sym) : null,
       enriched:     true,
     }
