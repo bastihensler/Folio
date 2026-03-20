@@ -1,42 +1,53 @@
-// api/debug.js — temporary debug endpoint
-// Visit: yourapp.vercel.app/api/debug?symbol=ASML.AS
-// Shows the raw Yahoo Finance response so we can see what fields are returned
+// Visit: /api/debug?symbol=XGSD.DE&mode=etf  to see full ETF data
+// Visit: /api/debug?symbol=XGSD.DE            to see quote data only
 
 export default async function handler(req, res) {
-  const { symbol = 'ASML.AS' } = req.query
+  const { symbol = 'XGSD.DE', mode } = req.query
 
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`
-
-  try {
-    const r = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-      }
-    })
-
-    const data = await r.json()
-    const quote = data?.quoteResponse?.result?.[0] || {}
-
-    // Return only the fields we care about + status info
-    res.status(200).json({
-      status: r.status,
-      symbol,
-      found: !!quote.regularMarketPrice,
-      price: quote.regularMarketPrice,
-      currency: quote.currency,
-      trailingAnnualDividendYield: quote.trailingAnnualDividendYield,
-      trailingAnnualDividendRate: quote.trailingAnnualDividendRate,
-      dividendYield: quote.dividendYield,
-      dividendRate: quote.dividendRate,
-      shortName: quote.shortName,
-      // All keys returned by Yahoo for this symbol
-      allKeys: Object.keys(quote),
-      // Raw response in case we need to inspect
-      raw: quote,
-    })
-  } catch (err) {
-    res.status(500).json({ error: err.message })
+  const HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'application/json',
+    'Referer': 'https://finance.yahoo.com/',
   }
+
+  const out = { symbol, mode, results: {} }
+
+  // Test v7 quote
+  try {
+    const r = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`, { headers: HEADERS })
+    const d = await r.json()
+    const q = d?.quoteResponse?.result?.[0] || {}
+    out.results.v7_quote = {
+      status: r.status,
+      price: q.regularMarketPrice,
+      currency: q.currency,
+      trailingAnnualDividendYield: q.trailingAnnualDividendYield,
+      trailingAnnualDividendRate: q.trailingAnnualDividendRate,
+      shortName: q.shortName,
+    }
+  } catch (e) { out.results.v7_quote = { error: e.message } }
+
+  // Test quoteSummary (ETF holdings/sectors/TER)
+  if (mode === 'etf') {
+    try {
+      const r = await fetch(
+        `https://query1.finance.yahoo.com/v11/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=topHoldings,fundProfile,defaultKeyStatistics`,
+        { headers: HEADERS }
+      )
+      const d = await r.json()
+      const result = d?.quoteSummary?.result?.[0] || {}
+      out.results.quoteSummary = {
+        status: r.status,
+        holdings_count: result.topHoldings?.holdings?.length,
+        top3_holdings: result.topHoldings?.holdings?.slice(0, 3),
+        sector_count: result.topHoldings?.sectorWeightings?.length,
+        sectors_raw: result.topHoldings?.sectorWeightings?.slice(0, 3),
+        ter_keyStats: result.defaultKeyStatistics?.annualReportExpenseRatio,
+        ter_fundProfile: result.fundProfile?.feesExpensesInvestment?.annualReportExpenseRatio,
+        error: d?.quoteSummary?.error,
+      }
+    } catch (e) { out.results.quoteSummary = { error: e.message } }
+  }
+
+  res.status(200).json(out)
 }
