@@ -123,7 +123,6 @@ export default function App() {
             const topSec = Object.entries(data.sectors).sort((a,b) => b[1]-a[1])[0]?.[0]
             if (topSec) freshSector = topSec
           }
-        }
         } else if (h.type === 'stock' && !h.sector) {
           try {
             const pr = await fetch(`${FINNHUB}/stock/profile2&symbol=${h.symbol}`)
