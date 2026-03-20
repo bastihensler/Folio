@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { sb, ETF_DATA, ETF_HOLDINGS, ETF_ALIASES, resolveEtf, COLORS, delay, fetchPrice, fetchPriceAndYield, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB } from './config.js'
+import { sb, ETF_DATA, ETF_HOLDINGS, ETF_ALIASES, resolveEtf, stockCountry, COLORS, delay, fetchPrice, fetchPriceAndYield, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB } from './config.js'
 import { Card, SLabel, Btn, FLabel, Inp, Sel, Modal, thS, Td, fmtE, fmtN, pct } from './ui.jsx'
 import AuthScreen from './AuthScreen.jsx'
 
@@ -56,7 +56,11 @@ export default function App() {
     if (h) setHoldings(h.map(r => ({
       id: r.id, symbol: r.symbol, name: r.name, type: r.type,
       qty: +r.qty, avgCost: +r.avg_cost, currentPrice: +r.current_price,
-      sector: r.sector, annualFee: +r.annual_fee, dividendYield: +r.dividend_yield
+      sector: r.sector, annualFee: +r.annual_fee, dividendYield: +r.dividend_yield,
+      etfHoldings:      r.etf_holdings      || null,
+      sectorBreakdown:  r.sector_breakdown  || null,
+      countryBreakdown: r.country_breakdown || null,
+      country:          r.country           || '',    // for direct stocks
     })))
     if (t) setTxns(t.map(r => ({
       id: r.id, date: r.date, symbol: r.symbol, type: r.type,
@@ -119,11 +123,65 @@ export default function App() {
         if (data.annualFee != null) parts.push(`TER ${annualFee}%`)
         addLog(`✓ ${h.symbol}: ${parts.join(' · ')}`)
 
+        // Also refresh sector, ETF holdings and sector breakdown
+        let freshSector = h.sector || ''
+        let freshEtfHoldings = h.etfHoldings || null
+        let freshSectorBreakdown = h.sectorBreakdown || null
+
+        // For stocks: fetch sector from Finnhub profile if missing or stale
+        if (h.type === 'stock' && !h.sector) {
+          try {
+            const pr = await fetch(`${FINNHUB}/stock/profile2&symbol=${h.symbol}`)
+            const pd = await pr.json()
+            if (pd.finnhubIndustry) freshSector = pd.finnhubIndustry
+          } catch {}
+        }
+
+        // For ETFs: refresh from ETF_DATA curated table (authoritative)
+        if (h.type === 'etf') {
+          const etfKey = resolveEtf(h.symbol)
+          const etfMeta = etfKey ? ETF_DATA[etfKey] : null
+          if (etfMeta) {
+            freshEtfHoldings = etfMeta.holdings.slice(0, 50)
+            freshSectorBreakdown = etfMeta.sectors
+            const topSector = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0]
+            if (topSector) freshSector = topSector
+          }
+        }
+
+        // Country: from ETF_DATA for ETFs, from stockCountry() for stocks
+        const freshCountryBreakdown = h.type === 'etf'
+          ? (etfMeta ? etfMeta.countries : h.countryBreakdown || null)
+          : null
+        const freshCountry = h.type !== 'etf'
+          ? (h.country || stockCountry(h.symbol))
+          : null
+
         const { error } = await sb.from('holdings')
-          .update({ current_price: price, dividend_yield: divYield, annual_fee: annualFee, updated_at: new Date().toISOString() })
+          .update({
+            current_price:     price,
+            dividend_yield:    divYield,
+            annual_fee:        annualFee,
+            sector:            freshSector || h.sector,
+            etf_holdings:      freshEtfHoldings,
+            sector_breakdown:  freshSectorBreakdown,
+            country_breakdown: freshCountryBreakdown,
+            country:           freshCountry,
+            updated_at:        new Date().toISOString()
+          })
           .eq('id', h.id)
         if (error) addLog(`⚠ ${h.symbol}: DB update failed`)
-        return { ...h, currentPrice: price, dividendYield: divYield, annualFee: annualFee }
+        return {
+          ...h,
+          currentPrice:     price,
+          dividendYield:    divYield,
+          annualFee,
+          sector:           freshSector || h.sector,
+          etfHoldings:      freshEtfHoldings,
+          sectorBreakdown:  freshSectorBreakdown,
+          countryBreakdown: freshCountryBreakdown,
+          country:          freshCountry,
+        }
       }))
       updated.push(...results)
       await delay(300)
@@ -171,13 +229,66 @@ export default function App() {
   }
 
   // ── Add Holding ───────────────────────────────────────────────────────
-  const emptyNh = { isin: '', symbol: '', name: '', type: 'stock', qty: '', avgCostEur: '', currentPrice: '', sector: '', annualFee: '', dividendYield: '' }
+  const emptyNh = {
+    isin: '', symbol: '', name: '', type: 'stock',
+    qty: '', avgCostEur: '',
+    // Enriched by lookup — user never types these:
+    currentPrice: '', currency: 'EUR', sector: '',
+    annualFee: '', dividendYield: '',
+    etfHoldings: null,   // top holdings array for ETFs
+    sectors: null,       // sector breakdown object
+    enriched: false,     // true once lookup completed successfully
+  }
   const [nh, setNh] = useState(emptyNh)
 
   const resetAddHolding = () => {
     setNh(emptyNh)
     setIsinLookup('idle')
     setIsinResults([])  // Fix #4: always clear results
+  }
+
+  const enrichSymbol = async (sym, type, name) => {
+    // 1. ETF_DATA lookup — curated data for known ETFs
+    const etfKey  = type === 'etf' ? resolveEtf(sym) : null
+    const etfMeta = etfKey ? ETF_DATA[etfKey] : null
+
+    // 2. Finnhub stock profile for sector (stocks only)
+    let sector = ''
+    if (type === 'stock') {
+      try {
+        const pr = await fetch(`${FINNHUB}/stock/profile2&symbol=${sym}`)
+        const pd = await pr.json()
+        if (pd.finnhubIndustry) sector = pd.finnhubIndustry
+      } catch {}
+    }
+
+    // For ETFs: primary sector from curated data
+    if (type === 'etf' && etfMeta) {
+      sector = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] || ''
+    }
+
+    // 3. Live price + dividend yield from Yahoo
+    const priceData = await fetchPriceAndYield(sym, type, fxRates)
+
+    // 4. Assemble enriched holding
+    return {
+      symbol:       sym,
+      name:         name || sym,
+      type,
+      sector,
+      currency:     priceData?.currency || 'EUR',
+      currentPrice: priceData?.price    ? String(priceData.price.toFixed(2)) : '',
+      dividendYield:priceData?.dividendYield != null ? String(priceData.dividendYield) : '',
+      annualFee:    priceData?.annualFee != null
+        ? String(priceData.annualFee)
+        : etfMeta ? String(etfMeta.ter) : '',
+      etfHoldings:  etfMeta ? etfMeta.holdings.slice(0, 50) : null,
+      sectors:      etfMeta ? etfMeta.sectors   : null,
+      countries:    etfMeta ? etfMeta.countries : null,
+      // For direct stocks, derive country from symbol/exchange
+      country:      type !== 'etf' ? stockCountry(sym) : null,
+      enriched:     true,
+    }
   }
 
   const lookupISIN = async () => {
@@ -187,8 +298,7 @@ export default function App() {
       const r = await fetch(`${FINNHUB}/search&q=${nh.isin.toUpperCase()}`)
       const d = await r.json()
       const results = d?.result || []
-      const isinUpper = nh.isin.toUpperCase()
-      const countryCode = isinUpper.slice(0, 2)
+      const countryCode = nh.isin.slice(0, 2).toUpperCase()
 
       const prefExchange = {
         NL: ['AS', 'AMS', 'XAMS'], DE: ['XETRA', 'DE', 'GR'], FR: ['PA', 'XPAR'],
@@ -210,35 +320,8 @@ export default function App() {
         const sym  = best.symbol || best.displaySymbol || ''
         const name = best.description || ''
         const type = best.type === 'ETF' ? 'etf' : best.type === 'Crypto' ? 'crypto' : 'stock'
-
-        let sector = nh.sector
-        try {
-          const pr = await fetch(`${FINNHUB}/stock/profile2&symbol=${sym}`)
-          const pd = await pr.json()
-          if (pd.finnhubIndustry) sector = pd.finnhubIndustry
-        } catch {}
-
-        // Auto-fill TER and sector from ETF_DATA for known ETFs
-        const etfKey  = type === 'etf' ? resolveEtf(sym) : null
-        const etfMeta = etfKey ? ETF_DATA[etfKey] : null
-        const autoFee = etfMeta ? String(etfMeta.ter) : ''
-        // For ETFs, use primary sector (highest weighted). For stocks use Finnhub sector.
-        const autoSector = etfMeta
-          ? Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] || sector
-          : sector
-
-        setNh(h => ({ ...h, symbol: sym, name, type, sector: autoSector, annualFee: autoFee }))
-
-        // Fetch live price + dividend yield in one call
-        const priceData = await fetchPriceAndYield(sym, type, fxRates)
-        if (priceData?.price) {
-          setNh(h => ({
-            ...h,
-            currentPrice:  String(priceData.price),
-            dividendYield: priceData.dividendYield != null ? String(priceData.dividendYield) : h.dividendYield,
-            annualFee:     priceData.annualFee    != null ? String(priceData.annualFee)    : h.annualFee,
-          }))
-        }
+        const enriched = await enrichSymbol(sym, type, name)
+        setNh(h => ({ ...h, ...enriched }))
         setIsinResults(results.slice(0, 6))
         setIsinLookup('found')
       } else {
@@ -254,38 +337,48 @@ export default function App() {
     const sym  = result.symbol || result.displaySymbol || ''
     const name = result.description || ''
     const type = result.type === 'ETF' ? 'etf' : 'stock'
-    setNh(h => ({ ...h, symbol: sym, name, type }))
-    const price = await fetchPrice(sym, type, fxRates)
-    if (price) setNh(h => ({ ...h, currentPrice: String(price) }))
+    setIsinLookup('loading')
+    const enriched = await enrichSymbol(sym, type, name)
+    setNh(h => ({ ...h, ...enriched }))
+    setIsinLookup('found')
   }
 
   const addHolding = async () => {
     if ((!nh.symbol && !nh.isin) || !nh.qty || !nh.avgCostEur) return
     const sym = nh.symbol.trim().toUpperCase()
-    if (!sym) { alert('Please enter a ticker symbol or use ISIN lookup'); return }
-    // avgCostEur is already in EUR — store directly
-    const avgCostEUR = +nh.avgCostEur
-    let price = nh.currentPrice ? +nh.currentPrice : await fetchPrice(sym, nh.type, fxRates) || 0
-    // Determine sector: use entered value, or ETF_DATA primary sector, or 'Other'
-    const etfKeyAdd  = nh.type === 'etf' ? resolveEtf(sym) : null
-    const etfMetaAdd = etfKeyAdd ? ETF_DATA[etfKeyAdd] : null
-    const finalSector = nh.sector ||
-      (etfMetaAdd ? Object.entries(etfMetaAdd.sectors).sort((a, b) => b[1] - a[1])[0]?.[0] : null) ||
-      'Other'
-    const finalFee    = nh.annualFee !== '' ? +nh.annualFee : (etfMetaAdd ? etfMetaAdd.ter : 0)
-    const finalDiv    = nh.dividendYield !== '' ? +nh.dividendYield : 0
-    const row = {
-      user_id: user.id, symbol: sym, name: nh.name || sym, type: nh.type,
-      qty: +nh.qty, avg_cost: avgCostEUR, current_price: price,
-      sector: finalSector, annual_fee: finalFee, dividend_yield: finalDiv
+    if (!sym) { alert('Voer een ticker symbool in of gebruik ISIN opzoeken'); return }
+
+    // If not yet enriched via ISIN lookup, enrich now
+    let enriched = nh
+    if (!nh.enriched) {
+      enriched = { ...nh, ...(await enrichSymbol(sym, nh.type || 'stock', nh.name)) }
     }
-    // Fix #9: check for DB errors
+
+    const avgCostEUR = +enriched.avgCostEur
+    const price      = enriched.currentPrice ? +enriched.currentPrice : await fetchPrice(sym, enriched.type, fxRates) || 0
+    const finalFee   = enriched.annualFee !== '' ? +enriched.annualFee : 0
+    const finalDiv   = enriched.dividendYield !== '' ? +enriched.dividendYield : 0
+    const finalSec   = enriched.sector || 'Other'
+
+    const row = {
+      user_id: user.id, symbol: sym, name: enriched.name || sym, type: enriched.type,
+      qty: +enriched.qty, avg_cost: avgCostEUR, current_price: price,
+      sector: finalSec, annual_fee: finalFee, dividend_yield: finalDiv,
+      etf_holdings:      enriched.etfHoldings      || null,
+      sector_breakdown:  enriched.sectors          || null,
+      country_breakdown: enriched.countries        || null,
+      country:           enriched.country          || null,
+    }
     const { data, error } = await sb.from('holdings').insert(row).select().single()
-    if (error) { alert(`Failed to save holding: ${error.message}`); return }
+    if (error) { alert(`Opslaan mislukt: ${error.message}`); return }
     setHoldings(hs => [...hs, {
-      id: data.id, symbol: sym, name: nh.name || sym, type: nh.type,
-      qty: +nh.qty, avgCost: avgCostEUR, currentPrice: price,
-      sector: finalSector, annualFee: finalFee, dividendYield: finalDiv
+      id: data.id, symbol: sym, name: enriched.name || sym, type: enriched.type,
+      qty: +enriched.qty, avgCost: avgCostEUR, currentPrice: price,
+      sector: finalSec, annualFee: finalFee, dividendYield: finalDiv,
+      etfHoldings:      enriched.etfHoldings  || null,
+      sectorBreakdown:  enriched.sectors      || null,
+      countryBreakdown: enriched.countries    || null,
+      country:          enriched.country      || '',
     }])
     resetAddHolding()
     setShowAddH(false)
@@ -397,8 +490,9 @@ export default function App() {
     const bySec = {}
     rows.forEach(r => {
       if (r.type === 'etf') {
-        const etfKey = resolveEtf(r.symbol)
-        const etfSectors = etfKey ? ETF_DATA[etfKey]?.sectors : null
+        // Use DB-stored sector breakdown first, fall back to ETF_DATA
+        const etfSectors = r.sectorBreakdown
+          || (() => { const k = resolveEtf(r.symbol); return k ? ETF_DATA[k]?.sectors : null })()
         if (etfSectors) {
           // Distribute ETF value across its sectors
           Object.entries(etfSectors).forEach(([sector, pct]) => {
@@ -432,16 +526,18 @@ export default function App() {
       return { ...t, totalCostTxn, currentVal, pnl: t.type === 'buy' ? currentVal - totalCostTxn : (t.qty * t.price) - t.fee }
     })
 
-    // ETF exposure look-through using ETF_DATA (resolves aliases)
+    // ETF exposure look-through
+    // Priority: 1) DB-stored etfHoldings (from add/refresh), 2) ETF_DATA curated table
     const expMap = {}
     rows.filter(r => r.type === 'stock').forEach(r => {
       if (!expMap[r.symbol]) expMap[r.symbol] = { name: r.name, directEUR: 0, etfBreakdown: {} }
       expMap[r.symbol].directEUR += r.value
     })
     rows.filter(r => r.type === 'etf').forEach(r => {
-      const etfKey = resolveEtf(r.symbol)
-      const comp   = etfKey ? ETF_DATA[etfKey]?.holdings : null
-      if (!comp) return
+      // Use DB-stored holdings first, fall back to curated ETF_DATA
+      const comp = r.etfHoldings
+        || (() => { const k = resolveEtf(r.symbol); return k ? ETF_DATA[k]?.holdings : null })()
+      if (!comp || comp.length === 0) return
       comp.forEach(({ symbol, name, weight }) => {
         const imp = r.value * (weight / 100)
         if (!expMap[symbol]) expMap[symbol] = { name, directEUR: 0, etfBreakdown: {} }
@@ -454,11 +550,31 @@ export default function App() {
       return { symbol, name: d.name, directEUR: d.directEUR, etfBreakdown: d.etfBreakdown, etfTotalEUR: etfT, totalEUR: tot, totalPct: tv ? (tot / tv) * 100 : 0, directPct: tv ? (d.directEUR / tv) * 100 : 0 }
     }).sort((a, b) => b.totalEUR - a.totalEUR)
 
-    // ETF sector breakdown — aggregate sectors across all ETFs in portfolio
+    // Country breakdown — ETFs use country_breakdown, direct stocks use .country
+    const countryMap = {}
+    rows.forEach(r => {
+      if (r.type === 'etf') {
+        const cb = r.countryBreakdown
+          || (() => { const k = resolveEtf(r.symbol); return k ? ETF_DATA[k]?.countries : null })()
+        if (cb) {
+          Object.entries(cb).forEach(([country, pct]) => {
+            countryMap[country] = (countryMap[country] || 0) + r.value * (pct / 100)
+          })
+        }
+      } else {
+        const ctry = r.country || stockCountry(r.symbol) || 'Unknown'
+        countryMap[ctry] = (countryMap[ctry] || 0) + r.value
+      }
+    })
+    const countryData = Object.entries(countryMap)
+      .map(([name, value]) => ({ name, value, pct: tv ? (value / tv * 100).toFixed(1) : '0' }))
+      .sort((a, b) => b.value - a.value)
+
+    // ETF sector breakdown
     const etfSectorMap = {}
     rows.filter(r => r.type === 'etf').forEach(r => {
-      const etfKey = resolveEtf(r.symbol)
-      const sectors = etfKey ? ETF_DATA[etfKey]?.sectors : null
+      const sectors = r.sectorBreakdown
+        || (() => { const k = resolveEtf(r.symbol); return k ? ETF_DATA[k]?.sectors : null })()
       if (!sectors) return
       Object.entries(sectors).forEach(([sector, pct]) => {
         const impliedEUR = r.value * (pct / 100)
@@ -479,8 +595,9 @@ export default function App() {
       avgVol:  rows.reduce((s, r) => s + Math.abs(r.gainPct), 0) / rows.length,
       concentration: alloc.length ? Math.max(...alloc.map(a => parseFloat(a.pct))) : 0,
       txnRows, totalTxnFees: txns.reduce((s, t) => s + (t.fee || 0), 0),
-      exposureRows, etfSectorData,
-      etfSymbols: rows.filter(r => r.type === 'etf' && resolveEtf(r.symbol)).map(r => r.symbol)
+      exposureRows, etfSectorData, countryData,
+      // Include any ETF that has holdings data — either from DB or curated ETF_DATA
+      etfSymbols: rows.filter(r => r.type === 'etf' && (r.etfHoldings?.length > 0 || resolveEtf(r.symbol))).map(r => r.symbol)
     }
   }, [holdings, txns])
 
@@ -818,6 +935,42 @@ export default function App() {
                   </BarChart>
                 </ResponsiveContainer>
               </Card>
+
+              {/* Country breakdown */}
+              {C.countryData.length > 0 && (
+                <Card style={{ gridColumn: '1 / -1' }}>
+                  <SLabel text="Country Exposure" />
+                  <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginBottom: 12 }}>
+                    ETFs distributed by country composition · Direct stocks by country of incorporation
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 16 }}>
+                    {/* Bar list */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      {C.countryData.map((d, i) => (
+                        <div key={d.name}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                            <span style={{ fontSize: 11, fontFamily: 'DM Mono' }}>{d.name}</span>
+                            <span style={{ fontSize: 11, fontFamily: 'DM Mono', color: COLORS[i % COLORS.length] }}>{d.pct}%</span>
+                          </div>
+                          <div style={{ height: 5, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.min(parseFloat(d.pct), 100)}%`, height: '100%', background: COLORS[i % COLORS.length], borderRadius: 3, transition: 'width 0.4s ease' }} />
+                          </div>
+                          <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 2 }}>{fmtE(d.value)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Pie chart */}
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Pie data={C.countryData} cx="50%" cy="50%" outerRadius={90} paddingAngle={2} dataKey="value">
+                          {C.countryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} strokeWidth={0} />)}
+                        </Pie>
+                        <Tooltip contentStyle={{ background: '#0d1218', border: '1px solid #1e2d3d', borderRadius: 8, fontFamily: 'DM Mono', fontSize: 11 }} formatter={(v, name) => [fmtE(v), name]} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              )}
             </div>
           )}
 
@@ -971,66 +1124,147 @@ export default function App() {
 
       {/* ── Add Holding Modal ── */}
       {showAddH && (
-        <Modal title="Add Holding" onClose={() => { setShowAddH(false); resetAddHolding() }}>
-          <div style={{ marginBottom: 16, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border2)' }}>
-            <FLabel>ISIN (optional — auto-fills symbol &amp; name)</FLabel>
+        <Modal title="Holding toevoegen" onClose={() => { setShowAddH(false); resetAddHolding() }} width={540}>
+
+          {/* Phase 1: ISIN / symbol entry */}
+          <div style={{ marginBottom: 16 }}>
+            <FLabel>ISIN of ticker symbool</FLabel>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Inp value={nh.isin} onChange={e => { setNh(h => ({ ...h, isin: e.target.value })); setIsinLookup('idle'); setIsinResults([]) }} placeholder="e.g. NL0010273215" style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '1px' }} />
-              <button onClick={lookupISIN} disabled={isinLookup === 'loading' || nh.isin.length < 10} style={{ padding: '8px 14px', background: '#0d2a1f', border: '1px solid #00d4aa55', color: 'var(--accent)', borderRadius: 6, cursor: 'pointer', fontFamily: 'Syne', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', opacity: nh.isin.length < 10 ? 0.4 : 1 }}>
-                {isinLookup === 'loading' ? '…' : '🔍 Lookup'}
+              <Inp
+                value={nh.isin}
+                onChange={e => { setNh(h => ({ ...h, isin: e.target.value.toUpperCase() })); setIsinLookup('idle'); setIsinResults([]) }}
+                placeholder="bv. NL0010273215 of ASML.AS"
+                style={{ flex: 1, letterSpacing: '0.5px' }}
+              />
+              <button
+                onClick={lookupISIN}
+                disabled={isinLookup === 'loading' || nh.isin.length < 4}
+                style={{ padding: '8px 14px', background: isinLookup === 'loading' ? 'var(--surface2)' : '#0d2a1f', border: '1px solid #00d4aa55', color: 'var(--accent)', borderRadius: 6, cursor: 'pointer', fontFamily: 'Syne', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', opacity: nh.isin.length < 4 ? 0.4 : 1 }}>
+                {isinLookup === 'loading' ? '⟳ Zoeken…' : '🔍 Opzoeken'}
               </button>
             </div>
-            {isinLookup === 'found' && (
-              <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'DM Mono', marginBottom: 6 }}>
-                  ✓ {nh.name} ({nh.symbol}){nh.currentPrice ? ` · €${(+nh.currentPrice).toFixed(2)}` : ''}
+            {isinLookup === 'notfound' && (
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', fontFamily: 'DM Mono' }}>⚠ Niet gevonden — controleer ISIN of voer ticker direct in</div>
+            )}
+          </div>
+
+          {/* Exchange switcher */}
+          {isinResults.length > 1 && isinLookup === 'found' && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>Beurs wisselen:</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {isinResults.map((r, i) => (
+                  <button key={i} onClick={() => selectIsinResult(r)} style={{ padding: '3px 10px', borderRadius: 4, border: `1px solid ${nh.symbol === r.symbol ? 'var(--accent)' : 'var(--border2)'}`, background: nh.symbol === r.symbol ? '#0d2a1f' : 'var(--surface2)', color: nh.symbol === r.symbol ? 'var(--accent)' : 'var(--muted)', fontFamily: 'DM Mono', fontSize: 10, cursor: 'pointer', transition: 'all 0.1s' }}>
+                    {r.symbol}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Phase 2: Enriched preview — shown after successful lookup */}
+          {nh.enriched && (
+            <div style={{ marginBottom: 16, padding: '14px 16px', background: 'var(--surface2)', borderRadius: 10, border: '1px solid var(--border2)' }}>
+              {/* Header row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 18 }}>{nh.name}</div>
+                  <div style={{ fontFamily: 'DM Mono', fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                    {nh.symbol}
+                    {nh.currency && nh.currency !== 'EUR' && <span style={{ marginLeft: 6, color: 'var(--yellow)' }}>{nh.currency}</span>}
+                    <span style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 3, background: nh.type === 'etf' ? '#001a2e' : nh.type === 'crypto' ? '#1a1000' : '#0d1f0d', color: nh.type === 'etf' ? 'var(--blue)' : nh.type === 'crypto' ? 'var(--accent2)' : 'var(--green)', fontSize: 9, textTransform: 'uppercase' }}>{nh.type}</span>
+                  </div>
                 </div>
-                {isinResults.length > 1 && (
-                  <div>
-                    <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>Switch exchange:</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {isinResults.map((r, i) => (
-                        <button key={i} onClick={() => selectIsinResult(r)} style={{ padding: '3px 9px', borderRadius: 4, border: `1px solid ${nh.symbol === r.symbol ? 'var(--accent)' : 'var(--border2)'}`, background: nh.symbol === r.symbol ? '#0d2a1f' : 'var(--surface2)', color: nh.symbol === r.symbol ? 'var(--accent)' : 'var(--muted)', fontFamily: 'DM Mono', fontSize: 10, cursor: 'pointer' }}>
-                          {r.symbol}
-                        </button>
-                      ))}
-                    </div>
+                {nh.currentPrice && (
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'DM Mono', fontSize: 20, color: 'var(--accent)' }}>€{(+nh.currentPrice).toFixed(2)}</div>
+                    <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono' }}>live koers</div>
                   </div>
                 )}
               </div>
-            )}
-            {isinLookup === 'notfound' && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', fontFamily: 'DM Mono' }}>⚠ Not found — enter symbol manually below</div>}
-          </div>
+
+              {/* Data grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 10 }}>
+                {[
+                  { l: 'Sector',         v: nh.sector || '—' },
+                  { l: nh.type === 'etf' ? 'Largest country' : 'Land',
+                    v: nh.type === 'etf'
+                      ? (nh.countries ? Object.entries(nh.countries).sort((a,b)=>b[1]-a[1])[0]?.[0] : '—')
+                      : (nh.country || '—') },
+                  { l: 'Dividend (12m)', v: nh.dividendYield ? `${nh.dividendYield}%` : '—', c: nh.dividendYield ? 'var(--accent)' : 'var(--muted)' },
+                  { l: 'TER / Kosten',   v: nh.annualFee    ? `${nh.annualFee}%`     : '—', c: nh.annualFee    ? 'var(--yellow)' : 'var(--muted)' },
+                ].map(({ l, v, c }) => (
+                  <div key={l} style={{ padding: '8px 10px', background: 'var(--surface)', borderRadius: 6 }}>
+                    <div style={{ fontSize: 8, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 3 }}>{l}</div>
+                    <div style={{ fontFamily: 'DM Mono', fontSize: 12, color: c || 'var(--text)', fontWeight: 500 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ETF top holdings */}
+              {nh.etfHoldings && nh.etfHoldings.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 8, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 6 }}>Top holdings ({nh.etfHoldings.length})</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {nh.etfHoldings.slice(0, 15).map(h => (
+                      <div key={h.symbol} style={{ padding: '2px 8px', background: '#0d1f2d', border: '1px solid #1e3a5f', borderRadius: 4, fontFamily: 'DM Mono', fontSize: 10, color: 'var(--blue)' }}>
+                        {h.symbol} <span style={{ opacity: 0.6 }}>{h.weight}%</span>
+                      </div>
+                    ))}
+                    {nh.etfHoldings.length > 15 && (
+                      <div style={{ padding: '2px 8px', fontSize: 10, color: 'var(--muted)', fontFamily: 'DM Mono' }}>+{nh.etfHoldings.length - 15} meer</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Phase 3: Only ask what user knows */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div><FLabel>Symbol (ticker)</FLabel><Inp value={nh.symbol} onChange={e => setNh(h => ({ ...h, symbol: e.target.value }))} placeholder="ASML.AS" style={{ textTransform: 'uppercase' }} /></div>
-            <div><FLabel>Full Name</FLabel><Inp value={nh.name} onChange={e => setNh(h => ({ ...h, name: e.target.value }))} placeholder="ASML Holding" /></div>
-            <div><FLabel>Aantal (Quantity)</FLabel><Inp value={nh.qty} onChange={e => setNh(h => ({ ...h, qty: e.target.value }))} placeholder="10" type="number" /></div>
+            {/* If not enriched yet, show manual symbol entry */}
+            {!nh.enriched && (
+              <>
+                <div>
+                  <FLabel>Ticker symbool</FLabel>
+                  <Inp value={nh.symbol} onChange={e => setNh(h => ({ ...h, symbol: e.target.value.toUpperCase() }))} placeholder="ASML.AS" />
+                </div>
+                <div>
+                  <FLabel>Type</FLabel>
+                  <Sel value={nh.type} onChange={e => setNh(h => ({ ...h, type: e.target.value }))}>
+                    <option value="stock">Aandeel</option>
+                    <option value="etf">ETF</option>
+                    <option value="crypto">Crypto</option>
+                  </Sel>
+                </div>
+              </>
+            )}
+
+            <div>
+              <FLabel>Aantal aandelen</FLabel>
+              <Inp value={nh.qty} onChange={e => setNh(h => ({ ...h, qty: e.target.value }))} placeholder="10" type="number" />
+            </div>
             <div>
               <FLabel>Gemiddelde aankoopprijs (€)</FLabel>
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', fontFamily: 'DM Mono', fontSize: 12, pointerEvents: 'none' }}>€</span>
                 <Inp value={nh.avgCostEur} onChange={e => setNh(h => ({ ...h, avgCostEur: e.target.value }))} placeholder="155.00" type="number" style={{ paddingLeft: 22 }} />
               </div>
-              {nh.avgCostEur && <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 3 }}>stored directly in EUR</div>}
             </div>
-            <div><FLabel>Sector</FLabel><Inp value={nh.sector} onChange={e => setNh(h => ({ ...h, sector: e.target.value }))} placeholder="Technology" /></div>
-            <div><FLabel>Annual Fee % (TER)</FLabel><Inp value={nh.annualFee} onChange={e => setNh(h => ({ ...h, annualFee: e.target.value }))} placeholder="0.03" type="number" /></div>
-            <div><FLabel>Dividend Yield %</FLabel><Inp value={nh.dividendYield} onChange={e => setNh(h => ({ ...h, dividendYield: e.target.value }))} placeholder="1.3" type="number" /></div>
-            <div><FLabel>Huidige koers (€, leeg laten)</FLabel><Inp value={nh.currentPrice} onChange={e => setNh(h => ({ ...h, currentPrice: e.target.value }))} placeholder="automatisch ophalen" type="number" /></div>
           </div>
-          <div style={{ marginTop: 10 }}><FLabel>Type</FLabel>
-            <Sel value={nh.type} onChange={e => setNh(h => ({ ...h, type: e.target.value }))}>
-              <option value="stock">Stock / Aandeel</option>
-              <option value="etf">ETF</option>
-              <option value="crypto">Crypto</option>
-            </Sel>
-          </div>
-          <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', marginTop: 8 }}>
-            💡 ISIN auto-fills symbol · Alle prijzen in EUR · Koers wordt automatisch opgehaald
-          </div>
+
+          {nh.qty && nh.avgCostEur && nh.currentPrice && (
+            <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--surface2)', borderRadius: 6, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', fontSize: 11, fontFamily: 'DM Mono' }}>
+              <span style={{ color: 'var(--muted)' }}>Totale investering</span>
+              <span>{fmtE(+nh.qty * +nh.avgCostEur)}</span>
+              <span style={{ color: 'var(--muted)' }}>Huidige waarde</span>
+              <span style={{ color: +nh.currentPrice * +nh.qty >= +nh.qty * +nh.avgCostEur ? 'var(--green)' : 'var(--red)' }}>{fmtE(+nh.qty * +nh.currentPrice)}</span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            <Btn label="Cancel" onClick={() => { setShowAddH(false); resetAddHolding() }} style={{ flex: 1 }} />
-            <Btn label="Add Holding" variant="accent" onClick={addHolding} style={{ flex: 1 }} />
+            <Btn label="Annuleer" onClick={() => { setShowAddH(false); resetAddHolding() }} style={{ flex: 1 }} />
+            <Btn label="Toevoegen" variant="accent" onClick={addHolding} disabled={!nh.qty || !nh.avgCostEur || (!nh.symbol && !nh.isin)} style={{ flex: 1 }} />
           </div>
         </Modal>
       )}
