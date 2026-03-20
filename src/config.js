@@ -222,7 +222,7 @@ export const ETF_DATA = {
   'AIAG.L': {
     name: 'L&G Artificial Intelligence ETF', ter: 0.49,
     sectors:  { Technology: 68.4, 'Communication Services': 14.2, Industrials: 9.8, Healthcare: 4.2, Financials: 3.4 },
-    countries: { 'United States': 82.4, Taiwan: 4.8, Netherlands: 3.2, China: 3.1, South Korea: 2.8, Other: 3.7 },
+    countries: { 'United States': 82.4, Taiwan: 4.8, Netherlands: 3.2, China: 3.1, 'South Korea': 2.8, Other: 3.7 },
     holdings: [
       { symbol: 'NVDA',  name: 'NVIDIA Corp',       weight: 8.42 },
       { symbol: 'MSFT',  name: 'Microsoft',         weight: 7.18 },
