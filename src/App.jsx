@@ -46,9 +46,14 @@ export default function App() {
 
   useEffect(() => { if (user) loadData() }, [user])
 
-  // On load: backfill missing ETF metadata for existing holdings silently
+  // On load: fix wrong types AND backfill missing ETF metadata
   useEffect(() => {
     if (!holdings.length) return
+    // Fix holdings wrongly stored as 'stock' that are actually ETFs
+    holdings.filter(h => h.type !== 'etf' && resolveEtf(h.symbol)).forEach(async h => {
+      await sb.from('holdings').update({ type: 'etf' }).eq('id', h.id)
+      setHoldings(hs => hs.map(x => x.id === h.id ? { ...x, type: 'etf' } : x))
+    })
     const needsBackfill = holdings.filter(h =>
       h.type === 'etf' && !h.etfHoldings && resolveEtf(h.symbol)
     )
@@ -416,7 +421,11 @@ export default function App() {
       if (best) {
         const sym  = best.symbol || best.displaySymbol || ''
         const name = best.description || ''
-        const type = best.type === 'ETF' ? 'etf' : best.type === 'Crypto' ? 'crypto' : 'stock'
+        const fType = (best.type || '').toUpperCase()
+        const type = ['ETF','ETP','FUND','MUTUALFUND','BOND'].some(t => fType.includes(t))
+          ? 'etf'
+          : fType === 'CRYPTO' ? 'crypto'
+          : 'stock'
         const enriched = await enrichSymbol(sym, type, name, nh.isin || '')
         setNh(h => ({ ...h, ...enriched }))
         setIsinResults(results.slice(0, 6))
@@ -433,7 +442,8 @@ export default function App() {
   const selectIsinResult = async result => {
     const sym  = result.symbol || result.displaySymbol || ''
     const name = result.description || ''
-    const type = result.type === 'ETF' ? 'etf' : 'stock'
+    const ft = (result.type || '').toUpperCase()
+    const type = ['ETF','ETP','FUND','MUTUALFUND'].some(t => ft.includes(t)) ? 'etf' : ft === 'CRYPTO' ? 'crypto' : 'stock'
     setIsinLookup('loading')
     const enriched = await enrichSymbol(sym, type, name)
     setNh(h => ({ ...h, ...enriched }))

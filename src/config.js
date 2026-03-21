@@ -249,6 +249,394 @@ export const ETF_DATA = {
     ],
   },
 
+  // ── iShares Core EURO STOXX 50 (SXRT) — IE00B53L3W79 — Acc ─────────
+  'SXRT.DE': {
+    name: 'iShares Core EURO STOXX 50 ETF', ter: 0.10,
+    sectors: { Financials: 24.8, Industrials: 21.8, Technology: 16.7, 'Consumer Discretionary': 10.9, Healthcare: 6.0, 'Consumer Staples': 5.5, Utilities: 4.5, Energy: 4.1, Materials: 3.3, 'Communication Services': 2.4 },
+    countries: { France: 30.0, Germany: 29.5, Netherlands: 18.1, Spain: 10.5, Italy: 7.3, Belgium: 1.5, Other: 3.1 },
+    holdings: [
+      { symbol: 'ASML.AS', name: 'ASML Holding',        weight: 10.53 },
+      { symbol: 'SIE.DE',  name: 'Siemens AG',          weight: 4.41 },
+      { symbol: 'SAP.DE',  name: 'SAP SE',              weight: 4.13 },
+      { symbol: 'SAN.PA',  name: 'Banco Santander',     weight: 3.65 },
+      { symbol: 'SU.PA',   name: 'Schneider Electric',  weight: 3.38 },
+      { symbol: 'ALV.DE',  name: 'Allianz SE',          weight: 3.26 },
+      { symbol: 'TTE.PA',  name: 'TotalEnergies',       weight: 3.14 },
+      { symbol: 'MC.PA',   name: 'LVMH',                weight: 3.06 },
+      { symbol: 'IBE.MC',  name: 'Iberdrola',           weight: 2.73 },
+      { symbol: 'UCG.MI',  name: 'UniCredit',           weight: 2.71 },
+    ],
+  },
+
+  // ── iShares Core MSCI EMU (SXR7) — IE00B53QG562 — Acc ──────────────
+  'SXR7.DE': {
+    name: 'iShares Core MSCI EMU ETF', ter: 0.12,
+    sectors: { Financials: 22.4, Industrials: 18.6, Technology: 13.8, 'Consumer Discretionary': 10.2, Healthcare: 9.4, 'Consumer Staples': 7.1, Utilities: 5.8, Energy: 4.2, Materials: 4.1, 'Communication Services': 2.8, 'Real Estate': 1.6 },
+    countries: { France: 32.1, Germany: 26.4, Netherlands: 14.8, Spain: 9.2, Italy: 8.4, Belgium: 3.2, Finland: 2.1, Ireland: 1.8, Other: 2.0 },
+    holdings: [
+      { symbol: 'ASML.AS', name: 'ASML Holding',        weight: 8.42 },
+      { symbol: 'SAP.DE',  name: 'SAP SE',              weight: 4.18 },
+      { symbol: 'SIE.DE',  name: 'Siemens AG',          weight: 3.94 },
+      { symbol: 'SU.PA',   name: 'Schneider Electric',  weight: 3.12 },
+      { symbol: 'MC.PA',   name: 'LVMH',                weight: 2.98 },
+      { symbol: 'ALV.DE',  name: 'Allianz SE',          weight: 2.84 },
+      { symbol: 'SAN.PA',  name: 'Banco Santander',     weight: 2.61 },
+      { symbol: 'TTE.PA',  name: 'TotalEnergies',       weight: 2.44 },
+      { symbol: 'INGA.AS', name: 'ING Groep',           weight: 2.18 },
+      { symbol: 'AIR.PA',  name: 'Airbus',              weight: 2.04 },
+    ],
+  },
+
+  // ── iShares Global Clean Energy (IQQH) — IE00B1XNHC34 — Dist ───────
+  // ~1.2% dividend yield, TER 0.65%
+  'IQQH.DE': {
+    name: 'iShares Global Clean Energy ETF', ter: 0.65, dividendYield: 1.17,
+    sectors: { Utilities: 62.4, Technology: 18.8, Industrials: 12.6, Energy: 4.2, Materials: 2.0 },
+    countries: { 'United States': 42.1, Denmark: 9.8, Spain: 7.4, China: 7.2, Germany: 5.8, 'United Kingdom': 4.9, Italy: 4.2, Brazil: 3.8, Canada: 3.4, Other: 11.4 },
+    holdings: [
+      { symbol: 'ENPH',    name: 'Enphase Energy',      weight: 8.84 },
+      { symbol: 'ORSTED.CO', name: 'Ørsted',            weight: 8.21 },
+      { symbol: 'SEDG',    name: 'SolarEdge',           weight: 6.94 },
+      { symbol: 'NEE',     name: 'NextEra Energy',      weight: 6.42 },
+      { symbol: 'BEP',     name: 'Brookfield Renewable',weight: 5.18 },
+      { symbol: 'FSLR',    name: 'First Solar',         weight: 4.84 },
+      { symbol: 'EDP.LS',  name: 'EDP',                 weight: 4.12 },
+      { symbol: 'IBE.MC',  name: 'Iberdrola',           weight: 3.94 },
+      { symbol: 'VWS.CO',  name: 'Vestas Wind',         weight: 3.62 },
+      { symbol: 'RNW.TO',  name: 'TransAlta Renewables',weight: 2.84 },
+    ],
+  },
+
+  // ── L&G Artificial Intelligence (AIAI) — IE00BK5BCD43 — Acc ─────────
+  // Different from AIAG.L (which is distributing). This is accumulating.
+  'AIAI.L': {
+    name: 'L&G Artificial Intelligence UCITS ETF', ter: 0.49,
+    sectors: { Technology: 68.4, 'Communication Services': 14.2, Industrials: 9.8, Healthcare: 4.2, Financials: 3.4 },
+    countries: { 'United States': 82.4, Taiwan: 4.8, Netherlands: 3.2, China: 3.1, 'South Korea': 2.8, Other: 3.7 },
+    holdings: [
+      { symbol: 'NVDA',  name: 'NVIDIA Corp',        weight: 8.42 },
+      { symbol: 'MSFT',  name: 'Microsoft',          weight: 7.18 },
+      { symbol: 'GOOGL', name: 'Alphabet A',         weight: 6.84 },
+      { symbol: 'AMZN',  name: 'Amazon',             weight: 6.12 },
+      { symbol: 'META',  name: 'Meta Platforms',     weight: 5.94 },
+      { symbol: 'CRM',   name: 'Salesforce',         weight: 4.21 },
+      { symbol: 'ORCL',  name: 'Oracle',             weight: 3.87 },
+      { symbol: 'NOW',   name: 'ServiceNow',         weight: 3.54 },
+    ],
+  },
+
+  // ── VanEck Video Gaming & Esports (ESPO) — IE00BYWQWR46 — Acc ───────
+  'ESPO.AS': {
+    name: 'VanEck Video Gaming & Esports ETF', ter: 0.55,
+    sectors: { Technology: 52.8, 'Communication Services': 38.4, 'Consumer Discretionary': 8.8 },
+    countries: { 'United States': 38.2, Japan: 22.4, China: 14.8, 'South Korea': 8.4, Taiwan: 6.2, Other: 10.0 },
+    holdings: [
+      { symbol: 'NVDA',   name: 'NVIDIA Corp',        weight: 8.14 },
+      { symbol: 'RBLX',   name: 'Roblox',             weight: 7.82 },
+      { symbol: 'SE',     name: 'Sea Limited',        weight: 6.94 },
+      { symbol: '9984.T', name: 'SoftBank Group',     weight: 6.42 },
+      { symbol: 'ATVI',   name: 'Activision Blizzard',weight: 5.84 },
+      { symbol: 'EA',     name: 'Electronic Arts',    weight: 5.12 },
+      { symbol: 'TCEHY',  name: 'Tencent',            weight: 4.84 },
+      { symbol: 'NTES',   name: 'NetEase',            weight: 4.21 },
+    ],
+  },
+
+  // ── Vanguard FTSE Emerging Markets (VFEM) — IE00B3VVMM84 — Dist ─────
+  // ~2.8% div yield, TER 0.17%
+  'VFEM.AS': {
+    name: 'Vanguard FTSE Emerging Markets ETF', ter: 0.17, dividendYield: 2.84,
+    sectors: { Technology: 22.4, Financials: 21.8, 'Consumer Discretionary': 12.6, 'Communication Services': 9.4, Materials: 8.4, Industrials: 7.2, Energy: 6.8, 'Consumer Staples': 5.8, Healthcare: 3.8, Utilities: 2.2, 'Real Estate': 1.4 },
+    countries: { China: 26.8, India: 17.2, Taiwan: 14.8, 'South Korea': 11.2, Brazil: 5.4, 'Saudi Arabia': 4.2, 'South Africa': 3.6, Mexico: 2.8, Indonesia: 2.2, Thailand: 1.8, Other: 10.0 },
+    holdings: [
+      { symbol: 'TSM',      name: 'Taiwan Semiconductor', weight: 7.84 },
+      { symbol: 'TCEHY',   name: 'Tencent Holdings',     weight: 3.94 },
+      { symbol: 'SMSN',    name: 'Samsung Electronics',  weight: 3.48 },
+      { symbol: 'BABA',    name: 'Alibaba Group',        weight: 2.84 },
+      { symbol: 'RELIANCE', name: 'Reliance Industries', weight: 2.14 },
+      { symbol: 'MELI',    name: 'MercadoLibre',        weight: 1.84 },
+      { symbol: 'INFY',    name: 'Infosys',             weight: 1.62 },
+      { symbol: 'PDD',     name: 'PDD Holdings',        weight: 1.48 },
+    ],
+  },
+
+  // ── Vanguard S&P 500 Dist (VUSA) — IE00B3XXRP09 — Dist ──────────────
+  // ~1.3% div yield, TER 0.07%, same index as VOO
+  'VUSA.AS': {
+    name: 'Vanguard S&P 500 UCITS ETF (Dist)', ter: 0.07, dividendYield: 1.31,
+    sectors: { Technology: 31.4, Financials: 13.2, Healthcare: 12.1, 'Consumer Discretionary': 10.8, Industrials: 8.7, 'Communication Services': 8.5, 'Consumer Staples': 5.9, Energy: 3.8, Utilities: 2.4, Materials: 2.1, 'Real Estate': 2.3 },
+    countries: { 'United States': 100 },
+    holdings: [
+      { symbol: 'AAPL',  name: 'Apple Inc.',      weight: 7.12 },
+      { symbol: 'MSFT',  name: 'Microsoft',       weight: 6.48 },
+      { symbol: 'NVDA',  name: 'NVIDIA Corp',     weight: 5.96 },
+      { symbol: 'AMZN',  name: 'Amazon',          weight: 3.72 },
+      { symbol: 'META',  name: 'Meta Platforms',  weight: 2.54 },
+      { symbol: 'GOOGL', name: 'Alphabet A',      weight: 2.07 },
+      { symbol: 'TSLA',  name: 'Tesla Inc.',      weight: 1.42 },
+      { symbol: 'JPM',   name: 'JPMorgan Chase',  weight: 1.38 },
+      { symbol: 'AVGO',  name: 'Broadcom',        weight: 1.18 },
+      { symbol: 'XOM',   name: 'Exxon Mobil',     weight: 1.14 },
+    ],
+  },
+
+  // ── Xtrackers MSCI World IT (XDWT) — IE00BM67HT60 — Acc ─────────────
+  'XDWT.DE': {
+    name: 'Xtrackers MSCI World Information Technology ETF', ter: 0.25,
+    sectors: { Technology: 100 },
+    countries: { 'United States': 84.2, Taiwan: 5.8, Netherlands: 3.2, Japan: 2.4, 'South Korea': 2.1, Other: 2.3 },
+    holdings: [
+      { symbol: 'AAPL',  name: 'Apple Inc.',      weight: 17.84 },
+      { symbol: 'MSFT',  name: 'Microsoft',       weight: 16.42 },
+      { symbol: 'NVDA',  name: 'NVIDIA Corp',     weight: 14.18 },
+      { symbol: 'AVGO',  name: 'Broadcom',        weight: 4.84 },
+      { symbol: 'ASML.AS', name: 'ASML Holding', weight: 3.42 },
+      { symbol: 'ORCL',  name: 'Oracle',         weight: 3.18 },
+      { symbol: 'AMD',   name: 'AMD',            weight: 2.94 },
+      { symbol: 'QCOM',  name: 'Qualcomm',       weight: 2.42 },
+      { symbol: 'ADBE',  name: 'Adobe',          weight: 2.14 },
+      { symbol: 'CRM',   name: 'Salesforce',     weight: 2.08 },
+    ],
+  },
+
+  // ── Xtrackers MSCI World Materials (XDWM) — IE00BM67HS53 — Acc ──────
+  'XDWM.DE': {
+    name: 'Xtrackers MSCI World Materials ETF', ter: 0.25,
+    sectors: { Materials: 100 },
+    countries: { 'United States': 30.4, Australia: 18.2, Japan: 9.4, Canada: 9.2, 'United Kingdom': 8.4, Germany: 5.8, Switzerland: 4.2, France: 3.8, Other: 10.6 },
+    holdings: [
+      { symbol: 'LIN',     name: 'Linde PLC',        weight: 9.84 },
+      { symbol: 'BHP.AX',  name: 'BHP Group',        weight: 8.42 },
+      { symbol: 'RIO.L',   name: 'Rio Tinto',        weight: 7.18 },
+      { symbol: 'APD',     name: 'Air Products',     weight: 4.84 },
+      { symbol: 'SHW',     name: 'Sherwin-Williams', weight: 4.21 },
+      { symbol: 'FCX',     name: 'Freeport-McMoRan', weight: 3.94 },
+      { symbol: 'VALE',    name: 'Vale SA',          weight: 3.62 },
+      { symbol: 'NEM',     name: 'Newmont',          weight: 3.18 },
+      { symbol: 'DOW',     name: 'Dow Inc.',         weight: 2.84 },
+      { symbol: 'ECL',     name: 'Ecolab',          weight: 2.62 },
+    ],
+  },
+
+  // ── Xtrackers S&P 500 Equal Weight (XDEW) — IE00BLNMYC90 — Acc ──────
+  'XDEW.DE': {
+    name: 'Xtrackers S&P 500 Equal Weight ETF', ter: 0.15,
+    sectors: { Industrials: 14.8, Financials: 13.2, Technology: 12.8, Healthcare: 12.4, 'Consumer Discretionary': 10.8, 'Consumer Staples': 6.8, Energy: 6.4, Materials: 5.8, Utilities: 5.4, 'Real Estate': 5.2, 'Communication Services': 6.4 },
+    countries: { 'United States': 100 },
+    holdings: [
+      { symbol: 'AAPL',  name: 'Apple Inc.',      weight: 0.22 },
+      { symbol: 'MSFT',  name: 'Microsoft',       weight: 0.22 },
+      { symbol: 'NVDA',  name: 'NVIDIA Corp',     weight: 0.22 },
+      { symbol: 'JPM',   name: 'JPMorgan Chase',  weight: 0.22 },
+      { symbol: 'XOM',   name: 'Exxon Mobil',     weight: 0.22 },
+    ],
+  },
+
+  // ── Xtrackers STOXX Europe 600 (DX2X) — LU0328475792 — Acc ──────────
+  'DX2X.DE': {
+    name: 'Xtrackers STOXX Europe 600 ETF', ter: 0.20,
+    sectors: { Financials: 18.4, Industrials: 16.8, Healthcare: 14.2, 'Consumer Staples': 10.8, Technology: 9.4, 'Consumer Discretionary': 9.2, Energy: 6.4, Materials: 5.8, Utilities: 4.8, 'Real Estate': 2.4, 'Communication Services': 1.8 },
+    countries: { 'United Kingdom': 22.4, France: 17.8, Switzerland: 14.2, Germany: 13.8, Netherlands: 6.4, Sweden: 5.8, Denmark: 4.2, Spain: 3.8, Italy: 3.4, Other: 8.2 },
+    holdings: [
+      { symbol: 'NESN.SW',  name: 'Nestlé',            weight: 3.84 },
+      { symbol: 'ROG.SW',   name: 'Roche',             weight: 3.12 },
+      { symbol: 'ASML.AS',  name: 'ASML Holding',      weight: 2.94 },
+      { symbol: 'NOVN.SW',  name: 'Novartis',          weight: 2.64 },
+      { symbol: 'SAP.DE',   name: 'SAP SE',            weight: 2.42 },
+      { symbol: 'AZN.L',    name: 'AstraZeneca',       weight: 2.28 },
+      { symbol: 'SHEL.L',   name: 'Shell',             weight: 2.14 },
+      { symbol: 'HSBA.L',   name: 'HSBC',              weight: 1.94 },
+      { symbol: 'NOVO-B.CO', name: 'Novo Nordisk',     weight: 1.84 },
+      { symbol: 'SIE.DE',   name: 'Siemens AG',        weight: 1.72 },
+    ],
+  },
+
+  // ── iShares Core MSCI Europe Dist (IMEU/IQQY) — IE00B1YZSC51 ─────────
+  // Dist, ~2.8% yield, TER 0.12%
+  'IMEU.AS': {
+    name: 'iShares Core MSCI Europe ETF (Dist)', ter: 0.12, dividendYield: 2.84,
+    sectors: { Financials: 18.8, Healthcare: 14.4, Industrials: 14.2, 'Consumer Staples': 11.2, Technology: 8.4, 'Consumer Discretionary': 8.2, Energy: 6.8, Materials: 5.4, Utilities: 4.8, 'Communication Services': 4.2, 'Real Estate': 3.6 },
+    countries: { 'United Kingdom': 22.4, France: 15.8, Switzerland: 13.4, Germany: 12.8, Netherlands: 5.8, Sweden: 5.4, Denmark: 4.8, Spain: 4.2, Italy: 3.8, Other: 11.6 },
+    holdings: [
+      { symbol: 'NESN.SW',  name: 'Nestlé',            weight: 3.42 },
+      { symbol: 'ASML.AS',  name: 'ASML Holding',      weight: 3.12 },
+      { symbol: 'ROG.SW',   name: 'Roche',             weight: 2.84 },
+      { symbol: 'AZN.L',    name: 'AstraZeneca',       weight: 2.64 },
+      { symbol: 'NOVN.SW',  name: 'Novartis',          weight: 2.42 },
+      { symbol: 'NOVO-B.CO', name: 'Novo Nordisk',     weight: 2.18 },
+      { symbol: 'SHEL.L',   name: 'Shell',             weight: 2.04 },
+      { symbol: 'SAP.DE',   name: 'SAP SE',            weight: 1.94 },
+      { symbol: 'HSBA.L',   name: 'HSBC',              weight: 1.84 },
+      { symbol: 'LVMH.PA',  name: 'LVMH',              weight: 1.62 },
+    ],
+  },
+
+  // ── iShares STOXX Global Dividend 100 (ISPA/EXSH) — DE000A0F5UH1 ────
+  // Dist, ~4.2% yield, TER 0.46%
+  'ISPA.DE': {
+    name: 'iShares STOXX Global Select Dividend 100 ETF', ter: 0.46, dividendYield: 4.21,
+    sectors: { Financials: 22.4, Utilities: 14.8, 'Consumer Staples': 12.4, Energy: 11.2, Industrials: 10.8, 'Real Estate': 9.4, Materials: 6.2, Healthcare: 5.8, Technology: 4.2, 'Communication Services': 2.8 },
+    countries: { 'United States': 22.4, Japan: 14.8, Australia: 11.2, Canada: 9.4, 'United Kingdom': 8.8, Germany: 6.4, France: 5.8, Switzerland: 4.2, Netherlands: 3.4, Other: 13.6 },
+    holdings: [
+      { symbol: 'T',       name: 'AT&T',               weight: 3.84 },
+      { symbol: 'BTI',     name: 'British American Tobacco', weight: 3.42 },
+      { symbol: 'BCE.TO',  name: 'BCE Inc.',            weight: 3.18 },
+      { symbol: 'VALE',    name: 'Vale SA',             weight: 2.94 },
+      { symbol: 'BHP.AX',  name: 'BHP Group',          weight: 2.64 },
+      { symbol: 'EQNR.OL', name: 'Equinor',            weight: 2.42 },
+      { symbol: 'RIO.L',   name: 'Rio Tinto',          weight: 2.18 },
+      { symbol: 'ENB.TO',  name: 'Enbridge',           weight: 2.04 },
+      { symbol: 'NGG.L',   name: 'National Grid',      weight: 1.94 },
+      { symbol: 'KKPNY',   name: 'Koninklijke KPN',    weight: 1.82 },
+    ],
+  },
+
+  // ── iShares STOXX Europe Small 200 (EXSE) — DE000A0D8QZ7 ─────────────
+  // Dist, ~2.2% yield, TER 0.16%
+  'EXSE.DE': {
+    name: 'iShares STOXX Europe Small 200 ETF', ter: 0.16, dividendYield: 2.21,
+    sectors: { Industrials: 22.4, Technology: 14.8, 'Consumer Discretionary': 13.2, Healthcare: 11.4, Financials: 10.8, Materials: 8.4, 'Consumer Staples': 6.2, 'Real Estate': 5.8, Energy: 3.4, Utilities: 3.6 },
+    countries: { 'United Kingdom': 20.4, Sweden: 14.8, Germany: 12.4, Switzerland: 9.8, France: 9.2, Netherlands: 6.4, Denmark: 5.8, Italy: 5.2, Spain: 3.8, Other: 12.2 },
+    holdings: [
+      { symbol: 'IMCD.AS', name: 'IMCD Group',        weight: 1.84 },
+      { symbol: 'BESI.AS', name: 'BE Semiconductor',  weight: 1.62 },
+      { symbol: 'SDXO.AS', name: 'SBM Offshore',      weight: 1.42 },
+      { symbol: 'BOY.L',   name: 'Bodycote',          weight: 1.21 },
+      { symbol: 'SDRY.L',  name: 'Superdry',          weight: 1.04 },
+    ],
+  },
+
+  // ── VanEck World Equal Weight (TSWE) — NL0010408704 — Dist ───────────
+  // Dist, ~1.8% yield, TER 0.20%
+  'TSWE.AS': {
+    name: 'VanEck World Equal Weight Screened ETF', ter: 0.20, dividendYield: 1.84,
+    sectors: { Technology: 14.8, Industrials: 14.2, Financials: 13.8, Healthcare: 13.4, 'Consumer Discretionary': 10.8, 'Consumer Staples': 8.2, Energy: 6.4, Materials: 5.8, Utilities: 5.4, 'Real Estate': 3.6, 'Communication Services': 3.6 },
+    countries: { 'United States': 52.4, Japan: 9.4, 'United Kingdom': 5.8, Canada: 4.8, France: 4.2, Germany: 3.8, Switzerland: 3.4, Australia: 3.2, Netherlands: 2.4, Other: 10.6 },
+    holdings: [
+      { symbol: 'AAPL',   name: 'Apple Inc.',      weight: 0.38 },
+      { symbol: 'MSFT',   name: 'Microsoft',       weight: 0.38 },
+      { symbol: 'JPM',    name: 'JPMorgan Chase',  weight: 0.38 },
+      { symbol: 'UNH',    name: 'UnitedHealth',    weight: 0.38 },
+      { symbol: 'JNJ',    name: 'Johnson & Johnson', weight: 0.38 },
+    ],
+  },
+
+  // ── SPDR MSCI World Technology (SPFT) — IE00BYTRRD19 — Acc ───────────
+  'SPFT.DE': {
+    name: 'SPDR MSCI World Technology ETF', ter: 0.30,
+    sectors: { Technology: 100 },
+    countries: { 'United States': 84.2, Taiwan: 5.4, Netherlands: 3.2, Japan: 2.6, 'South Korea': 2.2, Other: 2.4 },
+    holdings: [
+      { symbol: 'AAPL',    name: 'Apple Inc.',      weight: 18.42 },
+      { symbol: 'MSFT',    name: 'Microsoft',       weight: 16.84 },
+      { symbol: 'NVDA',    name: 'NVIDIA Corp',     weight: 14.62 },
+      { symbol: 'AVGO',    name: 'Broadcom',        weight: 4.94 },
+      { symbol: 'ASML.AS', name: 'ASML Holding',   weight: 3.48 },
+      { symbol: 'ORCL',    name: 'Oracle',         weight: 3.24 },
+      { symbol: 'AMD',     name: 'AMD',            weight: 2.84 },
+      { symbol: 'QCOM',    name: 'Qualcomm',       weight: 2.54 },
+    ],
+  },
+
+  // ── Amundi MSCI World (LCUW/CW8) — LU0274211480 — Acc ────────────────
+  'LCUW.DE': {
+    name: 'Amundi MSCI World UCITS ETF', ter: 0.38,
+    sectors: { Technology: 25.4, Financials: 15.3, Healthcare: 12.8, Industrials: 11.2, 'Consumer Discretionary': 10.6, 'Communication Services': 8.1, 'Consumer Staples': 6.2, Energy: 4.5, Materials: 3.2, Utilities: 2.2, 'Real Estate': 2.8 },
+    countries: { 'United States': 70.8, Japan: 6.2, 'United Kingdom': 4.4, France: 3.4, Canada: 3.2, Switzerland: 2.8, Germany: 2.5, Australia: 2.2, Netherlands: 1.3, Other: 3.2 },
+    holdings: [
+      { symbol: 'AAPL',  name: 'Apple Inc.',      weight: 5.12 },
+      { symbol: 'MSFT',  name: 'Microsoft',       weight: 4.68 },
+      { symbol: 'NVDA',  name: 'NVIDIA Corp',     weight: 4.29 },
+      { symbol: 'AMZN',  name: 'Amazon',          weight: 2.68 },
+      { symbol: 'META',  name: 'Meta Platforms',  weight: 1.84 },
+      { symbol: 'GOOGL', name: 'Alphabet A',      weight: 1.49 },
+      { symbol: 'TSLA',  name: 'Tesla Inc.',      weight: 1.02 },
+      { symbol: 'JPM',   name: 'JPMorgan Chase',  weight: 0.99 },
+    ],
+  },
+
+  // ── Xtrackers MSCI World Swap (DBXW) — LU0852473528 — Acc ────────────
+  'DBXW.DE': {
+    name: 'Xtrackers MSCI World Swap UCITS ETF', ter: 0.19,
+    sectors: { Technology: 25.4, Financials: 15.3, Healthcare: 12.8, Industrials: 11.2, 'Consumer Discretionary': 10.6, 'Communication Services': 8.1, 'Consumer Staples': 6.2, Energy: 4.5, Materials: 3.2, Utilities: 2.2, 'Real Estate': 2.8 },
+    countries: { 'United States': 70.8, Japan: 6.2, 'United Kingdom': 4.4, France: 3.4, Canada: 3.2, Switzerland: 2.8, Germany: 2.5, Australia: 2.2, Netherlands: 1.3, Other: 3.2 },
+    holdings: [
+      { symbol: 'AAPL',  name: 'Apple Inc.',      weight: 5.12 },
+      { symbol: 'MSFT',  name: 'Microsoft',       weight: 4.68 },
+      { symbol: 'NVDA',  name: 'NVIDIA Corp',     weight: 4.29 },
+      { symbol: 'AMZN',  name: 'Amazon',          weight: 2.68 },
+      { symbol: 'META',  name: 'Meta Platforms',  weight: 1.84 },
+    ],
+  },
+
+  // ── Xtrackers AI & Big Data (XAIX) — IE00BGV5VN51 — Acc ─────────────
+  'XAIX.DE': {
+    name: 'Xtrackers Artificial Intelligence & Big Data ETF', ter: 0.35,
+    sectors: { Technology: 72.4, 'Communication Services': 16.8, Industrials: 6.4, Healthcare: 2.8, Financials: 1.6 },
+    countries: { 'United States': 78.4, Taiwan: 5.8, Netherlands: 3.4, China: 3.2, Japan: 2.8, 'South Korea': 2.4, Other: 4.0 },
+    holdings: [
+      { symbol: 'NVDA',    name: 'NVIDIA Corp',     weight: 9.42 },
+      { symbol: 'MSFT',    name: 'Microsoft',       weight: 8.18 },
+      { symbol: 'GOOGL',   name: 'Alphabet A',      weight: 7.84 },
+      { symbol: 'META',    name: 'Meta Platforms',  weight: 6.94 },
+      { symbol: 'AMZN',    name: 'Amazon',          weight: 6.12 },
+      { symbol: 'ASML.AS', name: 'ASML Holding',   weight: 3.48 },
+      { symbol: 'TSM',     name: 'Taiwan Semiconductor', weight: 3.12 },
+      { symbol: 'CRM',     name: 'Salesforce',     weight: 2.94 },
+    ],
+  },
+
+  // ── iShares MSCI Europe Consumer Staples (ESIS) — IE00BMW42074 — Acc ─
+  'ESIS.DE': {
+    name: 'iShares MSCI Europe Consumer Staples ETF', ter: 0.18,
+    sectors: { 'Consumer Staples': 100 },
+    countries: { 'United Kingdom': 22.4, Switzerland: 20.8, France: 16.4, Netherlands: 12.4, Belgium: 8.2, Germany: 7.4, Denmark: 6.8, Sweden: 3.8, Other: 1.8 },
+    holdings: [
+      { symbol: 'NESN.SW',  name: 'Nestlé',            weight: 16.84 },
+      { symbol: 'ULVR.L',   name: 'Unilever',          weight: 8.42 },
+      { symbol: 'BNZL.L',   name: 'Bunzl',             weight: 5.18 },
+      { symbol: 'DIAGEO.L', name: 'Diageo',            weight: 4.94 },
+      { symbol: 'AB-INBEV.BR', name: 'AB InBev',       weight: 4.62 },
+      { symbol: 'CARLB.CO', name: 'Carlsberg',         weight: 3.84 },
+      { symbol: 'OR.PA',    name: "L'Oréal",           weight: 3.62 },
+      { symbol: 'DANONE.PA', name: 'Danone',           weight: 3.18 },
+    ],
+  },
+
+  // ── iShares MSCI Europe Consumer Disc (ESID) — IE00BMWXKN31 — Acc ───
+  'ESID.DE': {
+    name: 'iShares MSCI Europe Consumer Discretionary ETF', ter: 0.18,
+    sectors: { 'Consumer Discretionary': 100 },
+    countries: { France: 24.2, Germany: 21.4, 'United Kingdom': 14.8, Sweden: 10.4, Italy: 8.2, Switzerland: 6.4, Netherlands: 5.8, Other: 8.8 },
+    holdings: [
+      { symbol: 'MC.PA',    name: 'LVMH',              weight: 12.84 },
+      { symbol: 'MBG.DE',   name: 'Mercedes-Benz',     weight: 7.42 },
+      { symbol: 'BMW.DE',   name: 'BMW AG',            weight: 6.18 },
+      { symbol: 'RMS.PA',   name: 'Hermès',            weight: 5.94 },
+      { symbol: 'VOW3.DE',  name: 'Volkswagen',        weight: 4.84 },
+      { symbol: 'KER.PA',   name: 'Kering',            weight: 4.12 },
+      { symbol: 'AD.AS',    name: 'Ahold Delhaize',    weight: 3.84 },
+      { symbol: 'ITX.MC',   name: 'Inditex',           weight: 3.62 },
+    ],
+  },
+
+  // ── Amundi STOXX Europe 600 Industrials (C6I) — LU1834987890 — Acc ───
+  'C6I.PA': {
+    name: 'Amundi STOXX Europe 600 Industrials ETF', ter: 0.30,
+    sectors: { Industrials: 100 },
+    countries: { France: 18.4, Germany: 16.8, 'United Kingdom': 14.2, Sweden: 12.4, Switzerland: 9.8, Denmark: 7.4, Spain: 5.8, Netherlands: 4.8, Other: 10.4 },
+    holdings: [
+      { symbol: 'SIE.DE',   name: 'Siemens AG',        weight: 11.84 },
+      { symbol: 'ABB.SW',   name: 'ABB Ltd',           weight: 7.42 },
+      { symbol: 'SU.PA',    name: 'Schneider Electric', weight: 7.18 },
+      { symbol: 'AIR.PA',   name: 'Airbus',            weight: 6.94 },
+      { symbol: 'BA.L',     name: 'BAE Systems',       weight: 4.84 },
+      { symbol: 'VOLV-B.ST', name: 'Volvo',            weight: 3.62 },
+      { symbol: 'SAND.ST',  name: 'Sandvik',           weight: 3.18 },
+      { symbol: 'ATLAS-B.ST', name: 'Atlas Copco',     weight: 2.94 },
+    ],
+  },
+
   // ── Vanguard High Dividend Yield ──────────────────────────────────────
   // ISIN: IE00B8GKDB10 | TER: 0.29% | Dist quarterly ~2.6% yield
   // Tickers: VHYL.AS (Amsterdam), VGWD.DE (Xetra), VHYL.L (London)
@@ -320,15 +708,44 @@ export const ETF_ALIASES = {
 
 // ISIN → ETF_DATA key mapping for direct ISIN lookups
 export const ISIN_TO_ETF = {
-  'LU0292096186': 'XGSD.DE',  // Xtrackers STOXX Global Select Dividend 100
-  'IE00B8GKDB10': 'VHYL.AS',  // Vanguard FTSE All-World High Dividend Yield
-  'IE00B3RBWM25': 'VWRL.AS',  // Vanguard FTSE All-World
+  // Vanguard
+  'IE00B3RBWM25': 'VWRL.AS',  // Vanguard FTSE All-World Dist
   'IE00BK5BQT80': 'VWCE.DE',  // Vanguard FTSE All-World Acc
-  'IE00B4L5Y983': 'IWDA.AS',  // iShares Core MSCI World
-  'IE00B5BMR087': 'CSPX.AS',  // iShares Core S&P 500
+  'IE00B8GKDB10': 'VHYL.AS',  // Vanguard FTSE All-World High Dividend Yield
+  'IE00B3VVMM84': 'VFEM.AS',  // Vanguard FTSE Emerging Markets Dist
+  'IE00B3XXRP09': 'VUSA.AS',  // Vanguard S&P 500 Dist
+  // iShares
+  'IE00B4L5Y983': 'IWDA.AS',  // iShares Core MSCI World Acc
+  'IE00B5BMR087': 'CSPX.AS',  // iShares Core S&P 500 Acc
   'IE00BKM4GZ66': 'EMIM.AS',  // iShares Core MSCI EM IMI
-  'LU0274208692': 'XDWD.DE',  // Xtrackers MSCI World
-  'IE00B3F81R35': 'AIAG.L',   // L&G AI ETF
+  'IE00B53L3W79': 'SXRT.DE',  // iShares Core EURO STOXX 50 Acc
+  'IE00B53QG562': 'SXR7.DE',  // iShares Core MSCI EMU Acc
+  'IE00B1XNHC34': 'IQQH.DE',  // iShares Global Clean Energy Dist
+  'IE00B1YZSC51': 'IMEU.AS',  // iShares Core MSCI Europe Dist
+  'DE000A0F5UH1': 'ISPA.DE',  // iShares STOXX Global Select Dividend 100
+  'DE000A0D8QZ7': 'EXSE.DE',  // iShares STOXX Europe Small 200 Dist
+  'IE00BMW42074': 'ESIS.DE',  // iShares MSCI Europe Consumer Staples Acc
+  'IE00BMWXKN31': 'ESID.DE',  // iShares MSCI Europe Consumer Discretionary Acc
+  // Xtrackers
+  'LU0292096186': 'XGSD.DE',  // Xtrackers STOXX Global Select Dividend 100
+  'LU0274208692': 'XDWD.DE',  // Xtrackers MSCI World (old ISIN)
+  'LU0274211480': 'LCUW.DE',  // Amundi/Xtrackers MSCI World (some share ISIN)
+  'IE00BM67HT60': 'XDWT.DE',  // Xtrackers MSCI World IT Acc
+  'IE00BM67HS53': 'XDWM.DE',  // Xtrackers MSCI World Materials Acc
+  'IE00BLNMYC90': 'XDEW.DE',  // Xtrackers S&P 500 Equal Weight Acc
+  'LU0328475792': 'DX2X.DE',  // Xtrackers STOXX Europe 600 Acc
+  'LU0852473528': 'DBXW.DE',  // Xtrackers MSCI World Swap Acc
+  'IE00BGV5VN51': 'XAIX.DE',  // Xtrackers AI & Big Data Acc
+  // L&G
+  'IE00B3F81R35': 'AIAG.L',   // L&G AI ETF Dist
+  'IE00BK5BCD43': 'AIAI.L',   // L&G AI ETF Acc
+  // VanEck
+  'NL0010408704': 'TSWE.AS',  // VanEck World Equal Weight Dist
+  'IE00BYWQWR46': 'ESPO.AS',  // VanEck Video Gaming & Esports Acc
+  // Amundi
+  'LU1834987890': 'C6I.PA',   // Amundi STOXX Europe 600 Industrials Acc
+  // SPDR
+  'IE00BYTRRD19': 'SPFT.DE',  // SPDR MSCI World Technology Acc
 }
 
 export function resolveEtf(symbolOrIsin) {
@@ -514,20 +931,19 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
   const curatedSectors  = etfMeta?.sectors        ?? null
   const curatedCountries= etfMeta?.countries      ?? null
 
-  // Primary: Yahoo for price (+ dividend yield for non-UCITS stocks/ETFs)
+  // Primary: Yahoo for price + dividend yield
+  let priceEUR = null
+  let divYield = curatedDivYield  // start with curated value
+
   try {
     const q = await yahooQuote(symbol, isEtf)
     if (q && q.price > 0) {
-      const priceEUR = toEUR(q.price, q.currency, fxRates)
+      priceEUR = toEUR(q.price, q.currency, fxRates)
 
-      // Dividend yield priority:
-      // 1. Curated ETF_DATA (most reliable for UCITS ETFs)
-      // 2. Yahoo trailingAnnualDividendYield (reliable for US stocks/ETFs)
-      // 3. Calculate from Yahoo dividendRate / price
-      // 4. Yahoo ETF quoteSummary divYield
-      let divYield = curatedDivYield
+      // Only override curated yield if we have live data
       if (divYield == null) {
         if (q.dividendYield != null && q.dividendYield > 0) {
+          // Yahoo returns as decimal ratio: 0.035 = 3.5%
           divYield = parseFloat((q.dividendYield * 100).toFixed(2))
         } else if (q.dividendRate != null && q.dividendRate > 0 && priceEUR > 0) {
           const rateEUR = toEUR(q.dividendRate, q.currency, fxRates)
@@ -537,7 +953,6 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
         }
       }
 
-      // Holdings/sectors: curated first, then Yahoo live (for unknown ETFs)
       const holdings = curatedHoldings ?? q.etf?.holdings ?? null
       const sectors  = curatedSectors  ?? q.etf?.sectors  ?? null
 
@@ -545,29 +960,39 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
         price:         priceEUR,
         dividendYield: divYield,
         annualFee:     curatedTer ?? q.etf?.ter ?? null,
-        holdings,
-        sectors,
-        countries:     curatedCountries,
+        holdings, sectors, countries: curatedCountries,
       }
     }
   } catch (e) { console.warn('[fetchPriceAndYield]', symbol, e?.message) }
 
-  // Finnhub fallback (price only — all metadata from curated data)
+  // Finnhub fallback for price
   try {
     const sym = toFinnhubSymbol(symbol, type)
     const r   = await fetch(`${FINNHUB}/quote&symbol=${sym}`)
     const d   = await r.json()
     if (d.c > 0) {
-      return {
-        price:         toEUR(d.c, nativeCurrency(symbol, type), fxRates),
-        dividendYield: curatedDivYield,
-        annualFee:     curatedTer,
-        holdings:      curatedHoldings,
-        sectors:       curatedSectors,
-        countries:     curatedCountries,
-      }
+      priceEUR = toEUR(d.c, nativeCurrency(symbol, type), fxRates)
     }
   } catch {}
+
+  // If we have a price but no dividend yet, try Finnhub dividend history for stocks
+  if (priceEUR && priceEUR > 0 && divYield == null && type === 'stock') {
+    try {
+      const divs = await fetchDividends(symbol, fxRates)
+      if (divs.length > 0) {
+        const annualEUR = divs.reduce((s, d) => s + (d.amountEUR || 0), 0)
+        divYield = parseFloat(((annualEUR / priceEUR) * 100).toFixed(2))
+      }
+    } catch {}
+  }
+
+  if (priceEUR && priceEUR > 0) {
+    return {
+      price: priceEUR, dividendYield: divYield,
+      annualFee: curatedTer, holdings: curatedHoldings,
+      sectors: curatedSectors, countries: curatedCountries,
+    }
+  }
 
   return null
 }
