@@ -249,9 +249,38 @@ export const ETF_DATA = {
     ],
   },
 
+  // ── Vanguard High Dividend Yield ──────────────────────────────────────
+  // ISIN: IE00B8GKDB10 | TER: 0.29% | Dist quarterly ~2.6% yield
+  // Tickers: VHYL.AS (Amsterdam), VGWD.DE (Xetra), VHYL.L (London)
+  'VHYL.AS': {
+    name: 'Vanguard FTSE All-World High Dividend Yield ETF', ter: 0.29,
+    dividendYield: 2.64,
+    sectors: { Financials: 22.1, Industrials: 14.8, Healthcare: 11.2, Energy: 9.4, 'Consumer Staples': 9.1, Technology: 8.3, Materials: 6.2, Utilities: 5.8, 'Consumer Discretionary': 5.4, 'Real Estate': 4.2, 'Communication Services': 3.5 },
+    countries: { 'United States': 17.8, Japan: 14.2, 'United Kingdom': 9.1, Australia: 8.4, Canada: 6.8, France: 5.2, Germany: 4.8, Switzerland: 4.1, China: 3.9, Taiwan: 3.4, 'South Korea': 3.1, Other: 19.2 },
+    holdings: [
+      { symbol: 'TSM',      name: 'Taiwan Semiconductor',   weight: 2.18 },
+      { symbol: 'NESN.SW',  name: 'Nestlé',                 weight: 1.84 },
+      { symbol: 'NOVN.SW',  name: 'Novartis',               weight: 1.62 },
+      { symbol: 'SHEL.L',   name: 'Shell',                  weight: 1.58 },
+      { symbol: 'TTE.PA',   name: 'TotalEnergies',          weight: 1.41 },
+      { symbol: 'HSBA.L',   name: 'HSBC',                   weight: 1.38 },
+      { symbol: 'RIO.L',    name: 'Rio Tinto',              weight: 1.24 },
+      { symbol: 'BHP.AX',   name: 'BHP Group',              weight: 1.21 },
+      { symbol: '8058.T',   name: 'Mitsubishi Corp',        weight: 1.18 },
+      { symbol: 'EQNR.OL',  name: 'Equinor',               weight: 1.12 },
+      { symbol: 'CVX',      name: 'Chevron',                weight: 1.08 },
+      { symbol: 'XOM',      name: 'Exxon Mobil',            weight: 1.04 },
+      { symbol: 'ENB.TO',   name: 'Enbridge',               weight: 0.98 },
+      { symbol: 'BCE.TO',   name: 'BCE Inc.',               weight: 0.94 },
+      { symbol: 'AZN.L',    name: 'AstraZeneca',            weight: 0.91 },
+    ],
+  },
+
   // ── Xtrackers Dividend ─────────────────────────────────────────────────
+  // ISIN: LU0292096186 | TER: 0.50% | Dist quarterly ~4.5% yield
   'XGSD.DE': {
     name: 'Xtrackers STOXX Global Select Dividend 100', ter: 0.50,
+    dividendYield: 4.57,
     sectors:  { Technology: 36.2, Industrials: 15.8, Financials: 9.4, Healthcare: 8.3, 'Real Estate': 6.3, Energy: 6.0, 'Consumer Staples': 5.8, 'Consumer Discretionary': 5.7, 'Communication Services': 5.1, Materials: 0.9, Utilities: 0.7 },
     countries: { 'United States': 38.4, Japan: 12.8, Australia: 10.2, 'United Kingdom': 8.4, Canada: 7.6, Germany: 5.2, France: 4.1, Switzerland: 3.8, Netherlands: 2.4, Other: 7.1 },
     holdings: [
@@ -280,15 +309,19 @@ export const ETF_ALIASES = {
   EMIM: 'EMIM.AS', XDWD: 'XDWD.DE',
   AIAG: 'AIAG.L',
   // Xtrackers STOXX Global Select Dividend 100 (ISIN: LU0292096186)
-  // Finnhub may return any of these for that ISIN:
   XGSD: 'XGSD.DE', 'XGSD.DE': 'XGSD.DE',
   DXSB: 'XGSD.DE', 'DXSB.DE': 'XGSD.DE',
+  // Vanguard FTSE All-World High Dividend Yield (ISIN: IE00B8GKDB10)
+  // Listed as VHYL on London/Amsterdam, VGWD on Xetra
+  VHYL: 'VHYL.AS', 'VHYL.AS': 'VHYL.AS', 'VHYL.L': 'VHYL.AS',
+  VGWD: 'VHYL.AS', 'VGWD.DE': 'VHYL.AS',
   SPY:  'VOO',     IVV:  'VOO',
 }
 
 // ISIN → ETF_DATA key mapping for direct ISIN lookups
 export const ISIN_TO_ETF = {
   'LU0292096186': 'XGSD.DE',  // Xtrackers STOXX Global Select Dividend 100
+  'IE00B8GKDB10': 'VHYL.AS',  // Vanguard FTSE All-World High Dividend Yield
   'IE00B3RBWM25': 'VWRL.AS',  // Vanguard FTSE All-World
   'IE00BK5BQT80': 'VWCE.DE',  // Vanguard FTSE All-World Acc
   'IE00B4L5Y983': 'IWDA.AS',  // iShares Core MSCI World
@@ -473,48 +506,65 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
   const etfMeta = etfKey ? ETF_DATA[etfKey] : null
   const isEtf   = type === 'etf'
 
+  // Curated ETF_DATA is authoritative for TER, dividend yield, holdings, sectors, countries.
+  // Yahoo Finance is unreliable for UCITS ETF dividend data — use it for price only.
+  const curatedTer      = etfMeta?.ter           ?? null
+  const curatedDivYield = etfMeta?.dividendYield  ?? null  // stored as % e.g. 2.64
+  const curatedHoldings = etfMeta?.holdings       ?? null
+  const curatedSectors  = etfMeta?.sectors        ?? null
+  const curatedCountries= etfMeta?.countries      ?? null
+
+  // Primary: Yahoo for price (+ dividend yield for non-UCITS stocks/ETFs)
   try {
-    // Use ETF enrichment mode for ETFs — fetches holdings, sectors and TER from Yahoo
     const q = await yahooQuote(symbol, isEtf)
     if (q && q.price > 0) {
       const priceEUR = toEUR(q.price, q.currency, fxRates)
 
-      // Dividend yield
-      let divYield = null
-      if (q.dividendYield != null && q.dividendYield > 0) {
-        divYield = parseFloat((q.dividendYield * 100).toFixed(2))
-      } else if (q.etf?.divYield != null && q.etf.divYield > 0) {
-        divYield = q.etf.divYield
-      } else if (q.dividendRate != null && q.dividendRate > 0 && priceEUR > 0) {
-        const rateEUR = toEUR(q.dividendRate, q.currency, fxRates)
-        divYield = parseFloat(((rateEUR / priceEUR) * 100).toFixed(2))
+      // Dividend yield priority:
+      // 1. Curated ETF_DATA (most reliable for UCITS ETFs)
+      // 2. Yahoo trailingAnnualDividendYield (reliable for US stocks/ETFs)
+      // 3. Calculate from Yahoo dividendRate / price
+      // 4. Yahoo ETF quoteSummary divYield
+      let divYield = curatedDivYield
+      if (divYield == null) {
+        if (q.dividendYield != null && q.dividendYield > 0) {
+          divYield = parseFloat((q.dividendYield * 100).toFixed(2))
+        } else if (q.dividendRate != null && q.dividendRate > 0 && priceEUR > 0) {
+          const rateEUR = toEUR(q.dividendRate, q.currency, fxRates)
+          divYield = parseFloat(((rateEUR / priceEUR) * 100).toFixed(2))
+        } else if (q.etf?.divYield != null && q.etf.divYield > 0) {
+          divYield = q.etf.divYield
+        }
       }
 
-      // TER: curated ETF_DATA takes priority, then Yahoo quoteSummary, then null
-      const ter = etfMeta?.ter ?? q.etf?.ter ?? null
+      // Holdings/sectors: curated first, then Yahoo live (for unknown ETFs)
+      const holdings = curatedHoldings ?? q.etf?.holdings ?? null
+      const sectors  = curatedSectors  ?? q.etf?.sectors  ?? null
 
-      // Holdings and sectors: curated data first, then Yahoo live data
-      const holdings = etfMeta?.holdings ?? q.etf?.holdings ?? null
-      const sectors  = etfMeta?.sectors  ?? q.etf?.sectors  ?? null
-      const countries= etfMeta?.countries ?? null
-
-      return { price: priceEUR, dividendYield: divYield, annualFee: ter, holdings, sectors, countries }
+      return {
+        price:         priceEUR,
+        dividendYield: divYield,
+        annualFee:     curatedTer ?? q.etf?.ter ?? null,
+        holdings,
+        sectors,
+        countries:     curatedCountries,
+      }
     }
   } catch (e) { console.warn('[fetchPriceAndYield]', symbol, e?.message) }
 
-  // Finnhub fallback (price only)
+  // Finnhub fallback (price only — all metadata from curated data)
   try {
     const sym = toFinnhubSymbol(symbol, type)
     const r   = await fetch(`${FINNHUB}/quote&symbol=${sym}`)
     const d   = await r.json()
     if (d.c > 0) {
       return {
-        price: toEUR(d.c, nativeCurrency(symbol, type), fxRates),
-        dividendYield: null,
-        annualFee: etfMeta?.ter ?? null,
-        holdings: etfMeta?.holdings ?? null,
-        sectors:  etfMeta?.sectors  ?? null,
-        countries:etfMeta?.countries ?? null,
+        price:         toEUR(d.c, nativeCurrency(symbol, type), fxRates),
+        dividendYield: curatedDivYield,
+        annualFee:     curatedTer,
+        holdings:      curatedHoldings,
+        sectors:       curatedSectors,
+        countries:     curatedCountries,
       }
     }
   } catch {}

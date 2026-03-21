@@ -46,6 +46,75 @@ export default function App() {
 
   useEffect(() => { if (user) loadData() }, [user])
 
+  // On load: backfill missing ETF metadata for existing holdings silently
+  useEffect(() => {
+    if (!holdings.length) return
+    const needsBackfill = holdings.filter(h =>
+      h.type === 'etf' && !h.etfHoldings && resolveEtf(h.symbol)
+    )
+    if (!needsBackfill.length) return
+    needsBackfill.forEach(async h => {
+      const etfKey  = resolveEtf(h.symbol)
+      const etfMeta = etfKey ? ETF_DATA[etfKey] : null
+      if (!etfMeta) return
+      const freshHoldings  = etfMeta.holdings.slice(0, 50)
+      const freshSectors   = etfMeta.sectors
+      const freshCountries = etfMeta.countries || null
+      const topSec = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0]
+      await sb.from('holdings').update({
+        etf_holdings:      freshHoldings,
+        sector_breakdown:  freshSectors,
+        country_breakdown: freshCountries,
+        annual_fee:        etfMeta.ter,
+        dividend_yield:    etfMeta.dividendYield ?? h.dividendYield,
+        sector:            topSec || h.sector,
+      }).eq('id', h.id)
+      setHoldings(hs => hs.map(x => x.id !== h.id ? x : {
+        ...x,
+        etfHoldings:      freshHoldings,
+        sectorBreakdown:  freshSectors,
+        countryBreakdown: freshCountries,
+        annualFee:        etfMeta.ter,
+        dividendYield:    etfMeta.dividendYield ?? x.dividendYield,
+        sector:           topSec || x.sector,
+      }))
+    })
+  }, [holdings.length])
+
+  // Backfill missing ETF metadata for existing holdings after load
+  useEffect(() => {
+    if (!holdings.length) return
+    const needsBackfill = holdings.filter(h =>
+      h.type === 'etf' && !h.etfHoldings && resolveEtf(h.symbol)
+    )
+    if (!needsBackfill.length) return
+    needsBackfill.forEach(async h => {
+      const etfKey  = resolveEtf(h.symbol)
+      const etfMeta = etfKey ? ETF_DATA[etfKey] : null
+      if (!etfMeta) return
+      const freshHoldings = etfMeta.holdings.slice(0, 50)
+      const freshSectors  = etfMeta.sectors
+      const freshCountries= etfMeta.countries || null
+      const freshFee      = etfMeta.ter
+      const topSec        = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0]
+      await sb.from('holdings').update({
+        etf_holdings:      freshHoldings,
+        sector_breakdown:  freshSectors,
+        country_breakdown: freshCountries,
+        annual_fee:        freshFee,
+        sector:            topSec || h.sector,
+      }).eq('id', h.id)
+      setHoldings(hs => hs.map(x => x.id !== h.id ? x : {
+        ...x,
+        etfHoldings:      freshHoldings,
+        sectorBreakdown:  freshSectors,
+        countryBreakdown: freshCountries,
+        annualFee:        freshFee,
+        sector:           topSec || x.sector,
+      }))
+    })
+  }, [holdings.length])
+
   const loadData = async () => {
     const [{ data: h, error: he }, { data: t, error: te }] = await Promise.all([
       sb.from('holdings').select('*').order('created_at'),
@@ -109,16 +178,17 @@ export default function App() {
         let freshCountry         = h.type !== 'etf' ? (h.country || stockCountry(h.symbol)) : null
 
         if (etfMeta) {
+          // Always overwrite from curated data — ensures DB is populated on first refresh
           freshEtfHoldings      = etfMeta.holdings.slice(0, 50)
           freshSectorBreakdown  = etfMeta.sectors
           freshCountryBreakdown = etfMeta.countries || null
           const topSec = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0]
           if (topSec) freshSector = topSec
-        } else if (data) {
-          // Unknown ETF: use live data from Yahoo quoteSummary
-          if (data.holdings) freshEtfHoldings     = data.holdings
-          if (data.sectors)  freshSectorBreakdown  = data.sectors
-          if (data.countries)freshCountryBreakdown = data.countries
+        } else if (h.type === 'etf' && data) {
+          // Unknown ETF: use live Yahoo quoteSummary data
+          if (data.holdings?.length) freshEtfHoldings     = data.holdings
+          if (data.sectors  && Object.keys(data.sectors).length)  freshSectorBreakdown  = data.sectors
+          if (data.countries && Object.keys(data.countries).length) freshCountryBreakdown = data.countries
           if (data.sectors) {
             const topSec = Object.entries(data.sectors).sort((a,b) => b[1]-a[1])[0]?.[0]
             if (topSec) freshSector = topSec
@@ -156,8 +226,8 @@ export default function App() {
 
         // ── Dividend yield ──
         let divYield = data.dividendYield ?? null
-        if (divYield == null && h.type === 'stock') {
-          // Try Finnhub dividend history for stocks
+        if (divYield == null) {
+          // Try Finnhub dividend history for both stocks AND distributing ETFs
           const divs = await fetchDividends(h.symbol, activeFxRates)
           if (divs.length > 0) {
             const annualEUR = divs.reduce((s, d) => s + (d.amountEUR || 0), 0)
@@ -169,7 +239,9 @@ export default function App() {
 
         const parts = [`€${price.toFixed(2)}`]
         if (divYield > 0) parts.push(`div ${divYield.toFixed(2)}%`)
-        if (etfMeta) parts.push(`TER ${annualFee}%`)
+        else parts.push(`div —`)
+        parts.push(`TER ${annualFee ?? '?'}%`)
+        if (freshEtfHoldings?.length) parts.push(`${freshEtfHoldings.length} holdings`)
         addLog(`✓ ${h.symbol}: ${parts.join(' · ')}`)
 
         const { error } = await sb.from('holdings')
@@ -1216,12 +1288,25 @@ export default function App() {
                     v: nh.type === 'etf'
                       ? (nh.countries ? Object.entries(nh.countries).sort((a,b)=>b[1]-a[1])[0]?.[0] : '—')
                       : (nh.country || '—') },
-                  { l: 'Dividend (12m)', v: nh.dividendYield ? `${nh.dividendYield}%` : '—', c: nh.dividendYield ? 'var(--accent)' : 'var(--muted)' },
-                  { l: 'TER / Kosten',   v: nh.annualFee    ? `${nh.annualFee}%`     : '—', c: nh.annualFee    ? 'var(--yellow)' : 'var(--muted)' },
-                ].map(({ l, v, c }) => (
+                  { l: 'Dividend (12m)', v: nh.dividendYield ? `${nh.dividendYield}%` : '—', c: nh.dividendYield ? 'var(--accent)' : 'var(--muted)', editable: 'dividendYield' },
+                  { l: 'TER / Kosten',   v: nh.annualFee    ? `${nh.annualFee}%`     : '—', c: nh.annualFee    ? 'var(--yellow)' : 'var(--muted)', editable: 'annualFee' },
+                ].map(({ l, v, c, editable }) => (
                   <div key={l} style={{ padding: '8px 10px', background: 'var(--surface)', borderRadius: 6 }}>
                     <div style={{ fontSize: 8, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 3 }}>{l}</div>
-                    <div style={{ fontFamily: 'DM Mono', fontSize: 12, color: c || 'var(--text)', fontWeight: 500 }}>{v}</div>
+                    {editable ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <input
+                          type="number"
+                          value={nh[editable] || ''}
+                          onChange={e => setNh(h => ({ ...h, [editable]: e.target.value }))}
+                          placeholder="—"
+                          style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border2)', color: c || 'var(--accent)', fontFamily: 'DM Mono', fontSize: 13, fontWeight: 500, outline: 'none', padding: '2px 0' }}
+                        />
+                        <span style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'DM Mono' }}>%</span>
+                      </div>
+                    ) : (
+                      <div style={{ fontFamily: 'DM Mono', fontSize: 12, color: c || 'var(--text)', fontWeight: 500 }}>{v}</div>
+                    )}
                   </div>
                 ))}
               </div>
