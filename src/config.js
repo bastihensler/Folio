@@ -787,12 +787,17 @@ export const DEFAULT_FX = {
 
 export function toEUR(price, currency, fxRates = DEFAULT_FX) {
   if (price == null || price === 0) return 0
-  const ccy = (currency || 'EUR').toUpperCase()
+  const raw = currency || 'EUR'
+  // Check for GBp (pence) BEFORE uppercasing — 'GBp'.toUpperCase() = 'GBP' which loses the pence flag
+  if (raw === 'GBp' || raw === 'GBp'.toUpperCase() && price > 500) {
+    // GBp = pence: divide by 100 to get GBP, then convert to EUR
+    const gbpRate = fxRates.GBP ?? DEFAULT_FX.GBP
+    return (price / 100) / gbpRate
+  }
+  const ccy = raw.toUpperCase()
   if (ccy === 'EUR') return price
   if (ccy === 'GBP') return price / (fxRates.GBP ?? DEFAULT_FX.GBP)
-  const rate = ccy === 'GBp'
-    ? ((fxRates.GBP ?? DEFAULT_FX.GBP) * 100)
-    : (fxRates[ccy] ?? DEFAULT_FX[ccy])
+  const rate = fxRates[ccy] ?? DEFAULT_FX[ccy]
   if (!rate) { console.warn(`[toEUR] Unknown currency "${ccy}"`); return price }
   return price / rate
 }
@@ -892,7 +897,7 @@ async function yahooQuote(symbol, etfMode = false) {
     if (q?.regularMarketPrice && q.regularMarketPrice > 0) {
       return {
         price:        q.regularMarketPrice,
-        currency:     (q.currency || 'EUR').toUpperCase(),
+        currency:     q.currency || 'EUR',  // preserve GBp case — do NOT uppercase here
         dividendYield: (q.trailingAnnualDividendYield != null && q.trailingAnnualDividendYield > 0)
           ? q.trailingAnnualDividendYield : null,
         dividendRate: q.trailingAnnualDividendRate || null,
@@ -978,10 +983,16 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
   // If we have a price but no dividend yet, try Finnhub dividend history for stocks
   if (priceEUR && priceEUR > 0 && divYield == null && type === 'stock') {
     try {
-      const divs = await fetchDividends(symbol, fxRates)
+      // Try with full symbol first, then base ticker (without exchange suffix)
+      let divs = await fetchDividends(symbol, fxRates)
+      if (!divs.length) {
+        // Strip exchange suffix and try plain ticker (e.g. ASML.AS → ASML)
+        const dot = symbol.lastIndexOf('.')
+        if (dot > 0) divs = await fetchDividends(symbol.slice(0, dot), fxRates)
+      }
       if (divs.length > 0) {
         const annualEUR = divs.reduce((s, d) => s + (d.amountEUR || 0), 0)
-        divYield = parseFloat(((annualEUR / priceEUR) * 100).toFixed(2))
+        if (annualEUR > 0) divYield = parseFloat(((annualEUR / priceEUR) * 100).toFixed(2))
       }
     } catch {}
   }
