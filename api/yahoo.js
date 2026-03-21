@@ -124,7 +124,7 @@ export default async function handler(req, res) {
       quoteResponse: {
         result: [{
           regularMarketPrice:          quote?.regularMarketPrice ?? null,
-          currency:                    quote?.currency ?? 'EUR',
+          currency:                    quote?.currency ?? 'EUR',  // preserve GBp
           trailingAnnualDividendYield: quote?.trailingAnnualDividendYield ?? null,
           trailingAnnualDividendRate:  quote?.trailingAnnualDividendRate  ?? null,
           shortName:                   quote?.shortName ?? '',
@@ -148,7 +148,7 @@ export default async function handler(req, res) {
     quoteResponse: {
       result: [{
         regularMarketPrice:          quote.regularMarketPrice,
-        currency:                    quote.currency || 'USD',
+        currency:                    quote.currency || 'EUR',  // preserve GBp case
         trailingAnnualDividendRate:  quote.trailingAnnualDividendRate  ?? null,
         trailingAnnualDividendYield: quote.trailingAnnualDividendYield ?? null,
         shortName:                   quote.shortName || '',
