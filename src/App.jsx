@@ -4,7 +4,7 @@ import { sb, ETF_DATA, ETF_HOLDINGS, ETF_ALIASES, ISIN_TO_ETF, resolveEtf, stock
 import { Card, SLabel, Btn, FLabel, Inp, Sel, Modal, thS, Td, fmtE, fmtN, pct } from './ui.jsx'
 import AuthScreen from './AuthScreen.jsx'
 
-const TABS = ['overview', 'holdings', 'income', 'transactions', 'allocation', 'exposure', 'risk']
+const TABS = ['overview', 'holdings', 'stocks', 'etfs', 'income', 'transactions', 'allocation', 'exposure', 'risk']
 
 export default function App() {
   const [user,          setUser]          = useState(null)
@@ -974,6 +974,147 @@ export default function App() {
               </div>
             </Card>
           )}
+
+          {/* ── STOCKS ── */}
+          {tab === 'stocks' && (() => {
+            const sRows = C.rows.filter(r => r.type === 'stock' || r.type === 'crypto')
+            const sv = sRows.reduce((s, r) => s + r.value, 0)
+            const sc = sRows.reduce((s, r) => s + r.cost, 0)
+            const sg = sv - sc
+            const sad = sRows.reduce((s, r) => s + r.annDiv, 0)
+            return (
+              <Card>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+                    <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
+                      {['Symbol','Name','Sector','Qty','Avg Cost','Current','Value (€)','Gain (€)','%','Div %','Ann.Div',''].map(h => <th key={h} style={thS}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {sRows.map(r => { const net = r.annDiv; return (
+                        <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                          <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
+                          <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
+                          <Td style={{ fontSize: 10, color: 'var(--muted)', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.sector || '—'}</Td>
+                          <Td style={{ fontSize: 11 }}>{fmtN(r.qty, r.type === 'crypto' ? 4 : 2)}</Td>
+                          <Td style={{ fontSize: 11 }}>{fmtE(r.avgCost)}</Td>
+                          <Td style={{ fontSize: 11 }}>{fmtE(r.currentPrice)}</Td>
+                          <Td style={{ fontWeight: 500 }}>{fmtE(r.value)}</Td>
+                          <Td style={{ color: r.gain >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{fmtE(r.gain)}</Td>
+                          <Td style={{ color: r.gainPct >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{pct(r.gainPct)}</Td>
+                          <Td style={{ fontSize: 11 }}>
+                            {editingField?.id === r.id && editingField?.field === 'dividendYield' ? (
+                              <input autoFocus type="number" defaultValue={r.dividendYield}
+                                style={{ width: 52, background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 3, color: 'var(--accent)', fontFamily: 'DM Mono', fontSize: 11, padding: '1px 4px', outline: 'none' }}
+                                onBlur={e => saveFieldEdit(r.id, 'dividendYield', e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveFieldEdit(r.id, 'dividendYield', e.target.value); if (e.key === 'Escape') setEditingField(null) }}
+                              />
+                            ) : (
+                              <span onClick={() => setEditingField({ id: r.id, field: 'dividendYield' })}
+                                style={{ color: 'var(--accent)', cursor: 'pointer', borderBottom: '1px dashed var(--border2)' }} title="Click to edit">
+                                {r.dividendYield > 0 ? `${r.dividendYield}%` : <span style={{ color: 'var(--muted)' }}>— %</span>}
+                              </span>
+                            )}
+                          </Td>
+                          <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{fmtE(r.annDiv)}</Td>
+                          <Td><button onClick={() => deleteHolding(r.id)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted)', cursor: 'pointer', borderRadius: 3, padding: '2px 5px', fontSize: 10 }}>✕</button></Td>
+                        </tr>
+                      )})}
+                    </tbody>
+                    <tfoot><tr style={{ borderTop: '2px solid var(--border2)' }}>
+                      <td colSpan={6} style={{ padding: '8px', fontFamily: 'DM Mono', fontSize: 10, color: 'var(--muted)' }}>TOTAL · {sRows.length} positions</td>
+                      <Td style={{ fontWeight: 500 }}>{fmtE(sv)}</Td>
+                      <Td style={{ color: sg >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(sg)}</Td>
+                      <Td style={{ color: sg >= 0 ? 'var(--green)' : 'var(--red)' }}>{sc ? pct((sg/sc)*100) : '—'}</Td>
+                      <td /><Td style={{ color: 'var(--accent)' }}>{fmtE(sad)}</Td><td />
+                    </tr></tfoot>
+                  </table>
+                </div>
+              </Card>
+            )
+          })()}
+
+          {/* ── ETFS ── */}
+          {tab === 'etfs' && (() => {
+            const eRows = C.rows.filter(r => r.type === 'etf')
+            const ev  = eRows.reduce((s, r) => s + r.value, 0)
+            const ec  = eRows.reduce((s, r) => s + r.cost, 0)
+            const eg  = ev - ec
+            const eac = eRows.reduce((s, r) => s + r.annCost, 0)
+            const ead = eRows.reduce((s, r) => s + r.annDiv, 0)
+            return (
+              <Card>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+                    <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
+                      {['Symbol','Name','Qty','Avg Cost','Current','Value (€)','Gain (€)','%','TER %','Dist %','Ann.Cost','Ann.Div','Net p.a.','Holdings',''].map(h => <th key={h} style={thS}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {eRows.map(r => { const net = r.annDiv - r.annCost; return (
+                        <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                          <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
+                          <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
+                          <Td style={{ fontSize: 11 }}>{fmtN(r.qty, 2)}</Td>
+                          <Td style={{ fontSize: 11 }}>{fmtE(r.avgCost)}</Td>
+                          <Td style={{ fontSize: 11 }}>{fmtE(r.currentPrice)}</Td>
+                          <Td style={{ fontWeight: 500 }}>{fmtE(r.value)}</Td>
+                          <Td style={{ color: r.gain >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{fmtE(r.gain)}</Td>
+                          <Td style={{ color: r.gainPct >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{pct(r.gainPct)}</Td>
+                          <Td style={{ fontSize: 11 }}>
+                            {editingField?.id === r.id && editingField?.field === 'annualFee' ? (
+                              <input autoFocus type="number" defaultValue={r.annualFee}
+                                style={{ width: 52, background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 3, color: 'var(--yellow)', fontFamily: 'DM Mono', fontSize: 11, padding: '1px 4px', outline: 'none' }}
+                                onBlur={e => saveFieldEdit(r.id, 'annualFee', e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveFieldEdit(r.id, 'annualFee', e.target.value); if (e.key === 'Escape') setEditingField(null) }}
+                              />
+                            ) : (
+                              <span onClick={() => setEditingField({ id: r.id, field: 'annualFee' })}
+                                style={{ color: 'var(--yellow)', cursor: 'pointer', borderBottom: '1px dashed var(--border2)' }} title="Click to edit">
+                                {r.annualFee > 0 ? `${r.annualFee}%` : <span style={{ color: 'var(--muted)' }}>— %</span>}
+                              </span>
+                            )}
+                          </Td>
+                          <Td style={{ fontSize: 11 }}>
+                            {editingField?.id === r.id && editingField?.field === 'dividendYield' ? (
+                              <input autoFocus type="number" defaultValue={r.dividendYield}
+                                style={{ width: 52, background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 3, color: 'var(--accent)', fontFamily: 'DM Mono', fontSize: 11, padding: '1px 4px', outline: 'none' }}
+                                onBlur={e => saveFieldEdit(r.id, 'dividendYield', e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveFieldEdit(r.id, 'dividendYield', e.target.value); if (e.key === 'Escape') setEditingField(null) }}
+                              />
+                            ) : (
+                              <span onClick={() => setEditingField({ id: r.id, field: 'dividendYield' })}
+                                style={{ color: 'var(--accent)', cursor: 'pointer', borderBottom: '1px dashed var(--border2)' }} title="Click to edit">
+                                {r.dividendYield > 0 ? `${r.dividendYield}%` : <span style={{ color: 'var(--muted)' }}>— %</span>}
+                              </span>
+                            )}
+                          </Td>
+                          <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{fmtE(r.annCost)}</Td>
+                          <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{fmtE(r.annDiv)}</Td>
+                          <Td style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500, fontSize: 11 }}>{fmtE(net)}</Td>
+                          <Td style={{ fontSize: 10, color: 'var(--muted)' }}>
+                            {r.etfHoldings?.length
+                              ? <span style={{ color: 'var(--blue)' }}>{r.etfHoldings.length} stocks</span>
+                              : <span>—</span>}
+                          </Td>
+                          <Td><button onClick={() => deleteHolding(r.id)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted)', cursor: 'pointer', borderRadius: 3, padding: '2px 5px', fontSize: 10 }}>✕</button></Td>
+                        </tr>
+                      )})}
+                    </tbody>
+                    <tfoot><tr style={{ borderTop: '2px solid var(--border2)' }}>
+                      <td colSpan={5} style={{ padding: '8px', fontFamily: 'DM Mono', fontSize: 10, color: 'var(--muted)' }}>TOTAL · {eRows.length} ETFs</td>
+                      <Td style={{ fontWeight: 500 }}>{fmtE(ev)}</Td>
+                      <Td style={{ color: eg >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(eg)}</Td>
+                      <Td style={{ color: eg >= 0 ? 'var(--green)' : 'var(--red)' }}>{ec ? pct((eg/ec)*100) : '—'}</Td>
+                      <td /><td />
+                      <Td style={{ color: 'var(--yellow)' }}>{fmtE(eac)}</Td>
+                      <Td style={{ color: 'var(--accent)' }}>{fmtE(ead)}</Td>
+                      <Td style={{ color: (ead-eac) >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{fmtE(ead-eac)}</Td>
+                      <td /><td />
+                    </tr></tfoot>
+                  </table>
+                </div>
+              </Card>
+            )
+          })()}
 
           {/* ── INCOME ── */}
           {tab === 'income' && (
