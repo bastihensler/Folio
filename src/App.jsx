@@ -27,6 +27,39 @@ export default function App() {
   // Fix #5: declare isinResults state before it's used
   const [isinResults,   setIsinResults]   = useState([])
   const [editingField,  setEditingField]  = useState(null)  // { id, field, value }
+  const [sortState,     setSortState]     = useState({})    // { tabKey: { col, dir } }
+
+  // Cycle sort: none → asc → desc → none
+  const cycleSort = (tabKey, col) => {
+    setSortState(s => {
+      const cur = s[tabKey]
+      if (!cur || cur.col !== col) return { ...s, [tabKey]: { col, dir: 'asc' } }
+      if (cur.dir === 'asc')       return { ...s, [tabKey]: { col, dir: 'desc' } }
+      return { ...s, [tabKey]: null }
+    })
+  }
+  const sortRows = (rows, tabKey) => {
+    const s = sortState[tabKey]
+    if (!s) return rows
+    return [...rows].sort((a, b) => {
+      let av = a[s.col], bv = b[s.col]
+      if (av == null) av = typeof bv === 'string' ? '' : -Infinity
+      if (bv == null) bv = typeof av === 'string' ? '' : -Infinity
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv
+      return s.dir === 'asc' ? cmp : -cmp
+    })
+  }
+  const SortTh = ({ label, tabKey, col, style = {} }) => {
+    const s = sortState[tabKey]
+    const active = s?.col === col
+    const arrow = !active ? '' : s.dir === 'asc' ? ' ↑' : ' ↓'
+    return (
+      <th onClick={() => cycleSort(tabKey, col)}
+        style={{ ...style, padding: '7px 8px', textAlign: 'left', fontSize: 9, color: active ? 'var(--accent)' : 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '0.8px', fontWeight: 400, whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+        {label}{arrow}
+      </th>
+    )
+  }
   const [isinLookup,    setIsinLookup]    = useState('idle')
   const fileRef = useRef()
 
@@ -183,20 +216,27 @@ export default function App() {
         let freshCountryBreakdown= h.countryBreakdown || null
         let freshCountry         = h.type !== 'etf' ? (h.country || stockCountry(h.symbol)) : null
 
-        if (etfMeta) {
-          // Always overwrite from curated data — ensures DB is populated on first refresh
-          freshEtfHoldings      = etfMeta.holdings.slice(0, 50)
-          freshSectorBreakdown  = etfMeta.sectors
-          freshCountryBreakdown = etfMeta.countries || null
-          const topSec = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0]
-          if (topSec) freshSector = topSec
-        } else if (h.type === 'etf' && data) {
-          // Unknown ETF: use live Yahoo quoteSummary data
-          if (data.holdings?.length) freshEtfHoldings     = data.holdings
-          if (data.sectors  && Object.keys(data.sectors).length)  freshSectorBreakdown  = data.sectors
-          if (data.countries && Object.keys(data.countries).length) freshCountryBreakdown = data.countries
-          if (data.sectors) {
-            const topSec = Object.entries(data.sectors).sort((a,b) => b[1]-a[1])[0]?.[0]
+        if (h.type === 'etf') {
+          // Fetch live composition from Yahoo quoteSummary (catches % changes, new holdings)
+          // Curated ETF_DATA takes priority for sectors/countries (Yahoo names are inconsistent)
+          // but live holdings override curated when available — that way composition stays current
+          const liveData = data  // fetchPriceAndYield already called mode=etf for ETFs
+          if (liveData?.holdings?.length > 0) {
+            // Use live holdings — they reflect current composition
+            freshEtfHoldings = liveData.holdings
+            addLog(`  ${h.symbol}: ${liveData.holdings.length} holdings fetched live`)
+          } else if (etfMeta) {
+            freshEtfHoldings = etfMeta.holdings.slice(0, 50)
+          }
+          if (etfMeta) {
+            // Curated sectors/countries are more reliable than Yahoo's naming
+            freshSectorBreakdown  = etfMeta.sectors
+            freshCountryBreakdown = etfMeta.countries || null
+            const topSec = Object.entries(etfMeta.sectors).sort((a, b) => b[1] - a[1])[0]?.[0]
+            if (topSec) freshSector = topSec
+          } else if (liveData?.sectors && Object.keys(liveData.sectors).length) {
+            freshSectorBreakdown = liveData.sectors
+            const topSec = Object.entries(liveData.sectors).sort((a,b) => b[1]-a[1])[0]?.[0]
             if (topSec) freshSector = topSec
           }
         } else if (h.type === 'stock' && !h.sector) {
@@ -916,10 +956,24 @@ export default function App() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 880 }}>
                   <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
-                    {['Symbol','Name','Type','Qty','Avg Cost','Current','Value (€)','Gain (€)','%','Fee%','Div%','Ann.Cost','Ann.Div','Net p.a.',''].map(h => <th key={h} style={thS}>{h}</th>)}
+                    <SortTh label="Symbol"   tabKey="holdings" col="symbol" />
+                    <SortTh label="Name"     tabKey="holdings" col="name" />
+                    <th style={thS}>Type</th>
+                    <SortTh label="Qty"      tabKey="holdings" col="qty" />
+                    <SortTh label="Avg Cost" tabKey="holdings" col="avgCost" />
+                    <SortTh label="Current"  tabKey="holdings" col="currentPrice" />
+                    <SortTh label="Value (€)"tabKey="holdings" col="value" />
+                    <SortTh label="Gain (€)" tabKey="holdings" col="gain" />
+                    <SortTh label="%"        tabKey="holdings" col="gainPct" />
+                    <SortTh label="Fee%"     tabKey="holdings" col="annualFee" />
+                    <SortTh label="Div%"     tabKey="holdings" col="dividendYield" />
+                    <SortTh label="Ann.Cost" tabKey="holdings" col="annCost" />
+                    <SortTh label="Ann.Div"  tabKey="holdings" col="annDiv" />
+                    <SortTh label="Net p.a." tabKey="holdings" col="netIncome" />
+                    <th style={thS}></th>
                   </tr></thead>
                   <tbody>
-                    {C.rows.map(r => { const net = r.annDiv - r.annCost; return (
+                    {sortRows(C.rows.map(r => ({...r, netIncome: r.annDiv - r.annCost})), 'holdings').map(r => { const net = r.annDiv - r.annCost; return (
                       <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                         <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
                         <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
@@ -995,10 +1049,21 @@ export default function App() {
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
                     <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
-                      {['Symbol','Name','Sector','Qty','Avg Cost','Current','Value (€)','Gain (€)','%','Div %','Ann.Div',''].map(h => <th key={h} style={thS}>{h}</th>)}
+                      <SortTh label="Symbol"   tabKey="stocks" col="symbol" />
+                      <SortTh label="Name"     tabKey="stocks" col="name" />
+                      <SortTh label="Sector"   tabKey="stocks" col="sector" />
+                      <SortTh label="Qty"      tabKey="stocks" col="qty" />
+                      <SortTh label="Avg Cost" tabKey="stocks" col="avgCost" />
+                      <SortTh label="Current"  tabKey="stocks" col="currentPrice" />
+                      <SortTh label="Value (€)"tabKey="stocks" col="value" />
+                      <SortTh label="Gain (€)" tabKey="stocks" col="gain" />
+                      <SortTh label="%"        tabKey="stocks" col="gainPct" />
+                      <SortTh label="Div %"    tabKey="stocks" col="dividendYield" />
+                      <SortTh label="Ann.Div"  tabKey="stocks" col="annDiv" />
+                      <th style={thS}></th>
                     </tr></thead>
                     <tbody>
-                      {sRows.map(r => { const net = r.annDiv; return (
+                      {sortRows(sRows, 'stocks').map(r => { const net = r.annDiv; return (
                         <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                           <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
                           <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
@@ -1054,10 +1119,24 @@ export default function App() {
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                     <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
-                      {['Symbol','Name','Qty','Avg Cost','Current','Value (€)','Gain (€)','%','TER %','Dist %','Ann.Cost','Ann.Div','Net p.a.','Holdings',''].map(h => <th key={h} style={thS}>{h}</th>)}
+                      <SortTh label="Symbol"   tabKey="etfs" col="symbol" />
+                      <SortTh label="Name"     tabKey="etfs" col="name" />
+                      <SortTh label="Qty"      tabKey="etfs" col="qty" />
+                      <SortTh label="Avg Cost" tabKey="etfs" col="avgCost" />
+                      <SortTh label="Current"  tabKey="etfs" col="currentPrice" />
+                      <SortTh label="Value (€)"tabKey="etfs" col="value" />
+                      <SortTh label="Gain (€)" tabKey="etfs" col="gain" />
+                      <SortTh label="%"        tabKey="etfs" col="gainPct" />
+                      <SortTh label="TER %"    tabKey="etfs" col="annualFee" />
+                      <SortTh label="Dist %"   tabKey="etfs" col="dividendYield" />
+                      <SortTh label="Ann.Cost" tabKey="etfs" col="annCost" />
+                      <SortTh label="Ann.Div"  tabKey="etfs" col="annDiv" />
+                      <SortTh label="Net p.a." tabKey="etfs" col="netIncome" />
+                      <th style={thS}>Holdings</th>
+                      <th style={thS}></th>
                     </tr></thead>
                     <tbody>
-                      {eRows.map(r => { const net = r.annDiv - r.annCost; return (
+                      {sortRows(eRows.map(r => ({...r, netIncome: r.annDiv - r.annCost})), 'etfs').map(r => { const net = r.annDiv - r.annCost; return (
                         <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                           <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
                           <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
@@ -1148,10 +1227,17 @@ export default function App() {
                 <SLabel text="Per Holding Income" />
                 <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
-                    {['Symbol','Value (€)','Fee %','Ann.Cost (€)','Div %','Ann.Div (€)','Net p.a. (€)','Monthly (€)'].map(h => <th key={h} style={thS}>{h}</th>)}
+                    <SortTh label="Symbol"       tabKey="income" col="symbol" />
+                    <SortTh label="Value (€)"    tabKey="income" col="value" />
+                    <SortTh label="Fee %"        tabKey="income" col="annualFee" />
+                    <SortTh label="Ann.Cost (€)" tabKey="income" col="annCost" />
+                    <SortTh label="Div %"        tabKey="income" col="dividendYield" />
+                    <SortTh label="Ann.Div (€)"  tabKey="income" col="annDiv" />
+                    <SortTh label="Net p.a. (€)" tabKey="income" col="netIncome" />
+                    <SortTh label="Monthly (€)"  tabKey="income" col="netIncome" />
                   </tr></thead>
                   <tbody>
-                    {C.rows.map(r => { const net = r.annDiv - r.annCost; return (
+                    {sortRows(C.rows.map(r => ({...r, netIncome: r.annDiv - r.annCost})), 'income').map(r => { const net = r.annDiv - r.annCost; return (
                       <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                         <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
                         <Td>{fmtE(r.value)}</Td>
@@ -1190,10 +1276,20 @@ export default function App() {
                 <SLabel text="Ledger" />
                 <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                   <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
-                    {['Date','Symbol','Action','Qty','Price (€)','Fee (€)','Total (€)','Current (€)','P&L (€)','Note',''].map(h => <th key={h} style={thS}>{h}</th>)}
+                    <SortTh label="Date"        tabKey="txns" col="date" />
+                    <SortTh label="Symbol"      tabKey="txns" col="symbol" />
+                    <th style={thS}>Action</th>
+                    <SortTh label="Qty"         tabKey="txns" col="qty" />
+                    <SortTh label="Price (€)"   tabKey="txns" col="price" />
+                    <SortTh label="Fee (€)"     tabKey="txns" col="fee" />
+                    <SortTh label="Total (€)"   tabKey="txns" col="totalCostTxn" />
+                    <SortTh label="Current (€)" tabKey="txns" col="currentVal" />
+                    <SortTh label="P&L (€)"     tabKey="txns" col="pnl" />
+                    <th style={thS}>Note</th>
+                    <th style={thS}></th>
                   </tr></thead>
                   <tbody>
-                    {C.txnRows.map(r => (
+                    {sortRows(C.txnRows, 'txns').map(r => (
                       <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                         <Td style={{ color: 'var(--muted)', fontSize: 10, whiteSpace: 'nowrap' }}>{r.date}</Td>
                         <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
