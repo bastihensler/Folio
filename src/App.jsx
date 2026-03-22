@@ -404,9 +404,14 @@ export default function App() {
       const countryCode = nh.isin.slice(0, 2).toUpperCase()
 
       const prefExchange = {
-        NL: ['AS', 'AMS', 'XAMS'], DE: ['XETRA', 'DE', 'GR'], FR: ['PA', 'XPAR'],
+        NL: ['AS', 'AMS', 'XAMS'],
+        DE: ['DE', 'XETR', 'GR'],
+        FR: ['PA', 'XPAR'],
         BE: ['BR', 'XBRU'], IT: ['MI', 'XMIL'], ES: ['MC', 'XMAD'],
-        GB: ['L', 'LSE', 'XLON'], IE: ['ISE'], LU: ['LU'],
+        GB: ['L', 'LSE', 'XLON'],
+        // IE/LU = fund domicile, not listing exchange — prefer Xetra then Amsterdam
+        IE: ['DE', 'XETR', 'AS', 'AMS', 'L', 'ISE'],
+        LU: ['DE', 'XETR', 'AS', 'AMS', 'LU'],
         SE: ['ST', 'XSTO'], NO: ['OL', 'XOSL'], DK: ['CO', 'XCSE'],
         FI: ['HE', 'XHEL'], CH: ['SW', 'XSWX'], US: ['US', 'XNYS', 'XNAS'],
       }
@@ -419,14 +424,17 @@ export default function App() {
       }
       if (!best) best = results[0]
 
-      if (best) {
-        const sym  = best.symbol || best.displaySymbol || ''
-        const name = best.description || ''
-        const fType = (best.type || '').toUpperCase()
-        const type = ['ETF','ETP','FUND','MUTUALFUND','BOND'].some(t => fType.includes(t))
+      if (best || ISIN_TO_ETF[nh.isin.toUpperCase()]) {
+        // If we have a canonical ticker for this ISIN, use it directly
+        // (avoids wrong symbols from Finnhub e.g. SXRT.ISE instead of SXRT.DE)
+        const canonicalKey = ISIN_TO_ETF[nh.isin.toUpperCase()]
+        const canonicalSym = canonicalKey || best?.symbol || best?.displaySymbol || ''
+        const sym  = canonicalSym
+        const name = best?.description || (ETF_DATA[canonicalKey]?.name) || sym
+        const fType = (best?.type || '').toUpperCase()
+        const type = canonicalKey
           ? 'etf'
-          : fType === 'CRYPTO' ? 'crypto'
-          : 'stock'
+          : (['ETF','ETP','FUND','MUTUALFUND','BOND'].some(t => fType.includes(t)) ? 'etf' : fType === 'CRYPTO' ? 'crypto' : 'stock')
         const enriched = await enrichSymbol(sym, type, name, nh.isin || '')
         setNh(h => ({ ...h, ...enriched }))
         setIsinResults(results.slice(0, 6))

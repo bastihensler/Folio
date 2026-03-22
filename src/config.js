@@ -850,12 +850,25 @@ const SUFFIX_TO_CCY = {
 
 function toYahooSymbol(symbol) {
   if (!symbol) return null
+  // Already has Yahoo suffix (e.g. SXRT.DE, ASML.AS)
   if (/\.[A-Z]{1,4}$/.test(symbol)) return symbol
+  // Has Finnhub MIC prefix (e.g. XETR:SXRT) — convert to Yahoo format
   if (symbol.includes(':')) {
     const [mic, base] = symbol.split(':')
     const suffix = MIC_TO_SUFFIX[mic]
     return suffix ? `${base}.${suffix}` : base
   }
+  // Plain ticker with no suffix — check if it's in ETF_DATA with a suffix
+  // e.g. 'SXRT' → ETF_DATA has 'SXRT.DE' → return 'SXRT.DE'
+  const upper = symbol.toUpperCase()
+  const etfKey = ETF_DATA[upper + '.DE'] ? upper + '.DE'
+    : ETF_DATA[upper + '.AS'] ? upper + '.AS'
+    : ETF_DATA[upper + '.L']  ? upper + '.L'
+    : ETF_DATA[upper + '.PA'] ? upper + '.PA'
+    : null
+  if (etfKey) return etfKey
+  // Also check aliases
+  if (ETF_ALIASES[upper]) return ETF_ALIASES[upper]
   return symbol
 }
 
