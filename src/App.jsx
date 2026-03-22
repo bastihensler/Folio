@@ -27,6 +27,10 @@ export default function App() {
   // Fix #5: declare isinResults state before it's used
   const [isinResults,   setIsinResults]   = useState([])
   const [editingField,  setEditingField]  = useState(null)  // { id, field, value }
+  const [holdingDetail, setHoldingDetail] = useState(null)  // holding object for detail modal
+  const [detailEdit,    setDetailEdit]    = useState({})    // edited field values
+  const [detailTxn,     setDetailTxn]     = useState({ type: 'buy', qty: '', price: '', fee: '0', date: new Date().toISOString().slice(0,10), note: '' })
+  const [detailSaving,  setDetailSaving]  = useState(false)
   const [sortState,     setSortState]     = useState({})    // { tabKey: { col, dir } }
 
   // Cycle sort: none → asc → desc → none
@@ -633,6 +637,78 @@ export default function App() {
     setEditingField(null)
   }
 
+  // ── Holding detail modal ─────────────────────────────────────────────
+  const openDetail = (holding) => {
+    setHoldingDetail(holding)
+    setDetailEdit({
+      name:          holding.name,
+      sector:        holding.sector || '',
+      avgCost:       holding.avgCost.toFixed(4),
+      qty:           holding.qty.toString(),
+      dividendYield: holding.dividendYield.toString(),
+      annualFee:     holding.annualFee.toString(),
+    })
+    setDetailTxn({ type: 'buy', qty: '', price: '', fee: '0', date: new Date().toISOString().slice(0,10), note: '' })
+  }
+
+  const saveDetail = async () => {
+    if (!holdingDetail) return
+    setDetailSaving(true)
+    const updates = {
+      name:          detailEdit.name         || holdingDetail.name,
+      sector:        detailEdit.sector       || holdingDetail.sector,
+      avg_cost:      parseFloat(detailEdit.avgCost)       || holdingDetail.avgCost,
+      qty:           parseFloat(detailEdit.qty)           || holdingDetail.qty,
+      dividend_yield:parseFloat(detailEdit.dividendYield) || 0,
+      annual_fee:    parseFloat(detailEdit.annualFee)     || 0,
+      updated_at:    new Date().toISOString(),
+    }
+    const { error } = await sb.from('holdings').update(updates).eq('id', holdingDetail.id)
+    if (!error) {
+      setHoldings(hs => hs.map(h => h.id === holdingDetail.id ? {
+        ...h,
+        name:          updates.name,
+        sector:        updates.sector,
+        avgCost:       updates.avg_cost,
+        qty:           updates.qty,
+        dividendYield: updates.dividend_yield,
+        annualFee:     updates.annual_fee,
+      } : h))
+      setHoldingDetail(h => ({ ...h, name: updates.name, sector: updates.sector, avgCost: updates.avg_cost, qty: updates.qty, dividendYield: updates.dividend_yield, annualFee: updates.annual_fee }))
+    }
+    setDetailSaving(false)
+  }
+
+  const addDetailTxn = async () => {
+    if (!holdingDetail || !detailTxn.qty || !detailTxn.price) return
+    setDetailSaving(true)
+    const price  = parseFloat(detailTxn.price)
+    const qty    = parseFloat(detailTxn.qty)
+    const fee    = parseFloat(detailTxn.fee) || 0
+    const { data, error } = await sb.from('transactions')
+      .insert({ user_id: user.id, date: detailTxn.date, symbol: holdingDetail.symbol, type: detailTxn.type, qty, price, fee, note: detailTxn.note || '' })
+      .select().single()
+    if (!error) {
+      // Update holding qty and avg cost
+      const h = holdingDetail
+      const newQty = detailTxn.type === 'buy' ? h.qty + qty : Math.max(0, h.qty - qty)
+      const newAvg = detailTxn.type === 'buy' ? (h.qty * h.avgCost + qty * price) / (h.qty + qty) : h.avgCost
+      await sb.from('holdings').update({ qty: newQty, avg_cost: newAvg, updated_at: new Date().toISOString() }).eq('id', h.id)
+      setHoldings(hs => hs.map(x => x.id === h.id ? { ...x, qty: newQty, avgCost: newAvg } : x))
+      setHoldingDetail(x => ({ ...x, qty: newQty, avgCost: newAvg }))
+      setDetailEdit(e => ({ ...e, qty: newQty.toString(), avgCost: newAvg.toFixed(4) }))
+      setTxns(ts => [{ id: data.id, date: detailTxn.date, symbol: holdingDetail.symbol, type: detailTxn.type, qty, price, fee, note: detailTxn.note || '' }, ...ts])
+      setDetailTxn(t => ({ ...t, qty: '', price: '', fee: '0', note: '' }))
+    }
+    setDetailSaving(false)
+  }
+
+  const useCurrentPrice = async () => {
+    if (!holdingDetail) return
+    const p = await fetchPrice(holdingDetail.symbol, holdingDetail.type, fxRates)
+    if (p) setDetailTxn(t => ({ ...t, price: p.toFixed(2) }))
+  }
+
   // ── CSV Export ─────────────────────────────────────────────────────────
   const downloadCSV = (rows, filename) => {
     const csv = rows.map(r => r.map(v => {
@@ -1127,7 +1203,7 @@ export default function App() {
                   <tbody>
                     {sortRows(C.rows.map(r => ({...r, netIncome: r.annDiv - r.annCost})), 'holdings').map(r => { const net = r.annDiv - r.annCost; return (
                       <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                        <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
+                        <Td style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--accent)' }} onClick={() => openDetail(r)} title="Click to edit">{r.symbol}</Td>
                         <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
                         <Td><span style={{ fontSize: 9, padding: '2px 5px', borderRadius: 3, background: r.type === 'crypto' ? '#1a1000' : r.type === 'etf' ? '#001a2e' : '#0d1f0d', color: r.type === 'crypto' ? 'var(--accent2)' : r.type === 'etf' ? 'var(--blue)' : 'var(--green)', fontFamily: 'DM Mono', textTransform: 'uppercase' }}>{r.type}</span></Td>
                         <Td style={{ fontSize: 11 }}>{fmtN(r.qty, r.type === 'crypto' ? 4 : 2)}</Td>
@@ -1220,7 +1296,7 @@ export default function App() {
                     <tbody>
                       {sortRows(sRows, 'stocks').map(r => { const net = r.annDiv; return (
                         <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                          <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
+                          <Td style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--accent)' }} onClick={() => openDetail(r)} title="Click to edit">{r.symbol}</Td>
                           <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
                           <Td style={{ fontSize: 10, color: 'var(--muted)', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.sector || '—'}</Td>
                           <Td style={{ fontSize: 11 }}>{fmtN(r.qty, r.type === 'crypto' ? 4 : 2)}</Td>
@@ -1297,7 +1373,7 @@ export default function App() {
                     <tbody>
                       {sortRows(eRows.map(r => ({...r, netIncome: r.annDiv - r.annCost})), 'etfs').map(r => { const net = r.annDiv - r.annCost; return (
                         <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                          <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
+                          <Td style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--accent)' }} onClick={() => openDetail(r)} title="Click to edit">{r.symbol}</Td>
                           <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
                           <Td>
                             {r.dist === true  && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: '#0d2a1f', color: 'var(--accent)', fontFamily: 'DM Mono' }}>DIST</span>}
@@ -1900,6 +1976,120 @@ export default function App() {
           <Btn label="Uitloggen" variant="danger" onClick={async () => { await sb.auth.signOut(); setShowProfile(false) }} style={{ width: '100%' }} />
         </Modal>
       )}
+
+      {/* ── Holding Detail Modal ── */}
+      {holdingDetail && (() => {
+        const h = holdingDetail
+        const currentVal = h.qty * h.currentPrice
+        const gain       = currentVal - h.qty * h.avgCost
+        const gainPct    = h.avgCost ? (gain / (h.qty * h.avgCost)) * 100 : 0
+        const holdingTxns = txns.filter(t => t.symbol === h.symbol).slice(0, 20)
+        return (
+          <Modal title={h.symbol} onClose={() => setHoldingDetail(null)} width={560}>
+            {/* Header summary */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 18 }}>
+              {[
+                { l: 'Waarde',    v: fmtE(currentVal),        c: 'var(--text)' },
+                { l: 'Winst/V',   v: fmtE(gain),             c: gain >= 0 ? 'var(--green)' : 'var(--red)' },
+                { l: '%',         v: pct(gainPct),            c: gain >= 0 ? 'var(--green)' : 'var(--red)' },
+                { l: 'Koers',     v: fmtE(h.currentPrice),   c: 'var(--muted)' },
+              ].map(k => (
+                <div key={k.l} style={{ padding: '8px 10px', background: 'var(--surface2)', borderRadius: 7 }}>
+                  <div style={{ fontSize: 8, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 3 }}>{k.l}</div>
+                  <div style={{ fontFamily: 'DM Mono', fontSize: 14, color: k.c, fontWeight: 500 }}>{k.v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Editable fields */}
+            <SLabel text="Positie bewerken" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+              <div><FLabel>Naam</FLabel>
+                <Inp value={detailEdit.name || ''} onChange={e => setDetailEdit(d => ({ ...d, name: e.target.value }))} /></div>
+              <div><FLabel>Sector</FLabel>
+                <Inp value={detailEdit.sector || ''} onChange={e => setDetailEdit(d => ({ ...d, sector: e.target.value }))} placeholder="Technology" /></div>
+              <div><FLabel>Aantal aandelen</FLabel>
+                <Inp type="number" value={detailEdit.qty || ''} onChange={e => setDetailEdit(d => ({ ...d, qty: e.target.value }))} /></div>
+              <div><FLabel>Gem. aankoopprijs (€)</FLabel>
+                <Inp type="number" value={detailEdit.avgCost || ''} onChange={e => setDetailEdit(d => ({ ...d, avgCost: e.target.value }))} /></div>
+              <div><FLabel>Dividend % (12m)</FLabel>
+                <Inp type="number" value={detailEdit.dividendYield || ''} onChange={e => setDetailEdit(d => ({ ...d, dividendYield: e.target.value }))} placeholder="0" /></div>
+              <div><FLabel>{h.type === 'etf' ? 'TER %' : 'Kosten %'}</FLabel>
+                <Inp type="number" value={detailEdit.annualFee || ''} onChange={e => setDetailEdit(d => ({ ...d, annualFee: e.target.value }))} placeholder="0" /></div>
+            </div>
+            <Btn label={detailSaving ? 'Opslaan…' : 'Wijzigingen opslaan'} variant="accent" onClick={saveDetail} disabled={detailSaving} style={{ width: '100%', marginBottom: 20 }} />
+
+            {/* Add transaction */}
+            <SLabel text="Transactie toevoegen" />
+            <div style={{ padding: '12px 14px', background: 'var(--surface2)', borderRadius: 10, marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                {['buy','sell'].map(v => (
+                  <button key={v} onClick={() => setDetailTxn(t => ({ ...t, type: v }))}
+                    style={{ flex: 1, padding: '7px', border: `1px solid ${detailTxn.type === v ? (v === 'buy' ? 'var(--green)' : 'var(--red)') : 'var(--border)'}`, borderRadius: 6, background: detailTxn.type === v ? (v === 'buy' ? '#0d2a1f' : '#2d0a12') : 'var(--surface)', color: detailTxn.type === v ? (v === 'buy' ? 'var(--green)' : 'var(--red)') : 'var(--muted)', cursor: 'pointer', fontFamily: 'Syne', fontSize: 13, fontWeight: 700 }}>
+                    {v === 'buy' ? '▲ Koop' : '▼ Verkoop'}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                <div><FLabel>Datum</FLabel>
+                  <Inp type="date" value={detailTxn.date} onChange={e => setDetailTxn(t => ({ ...t, date: e.target.value }))} /></div>
+                <div><FLabel>Aantal</FLabel>
+                  <Inp type="number" value={detailTxn.qty} onChange={e => setDetailTxn(t => ({ ...t, qty: e.target.value }))} placeholder="10" /></div>
+                <div>
+                  <FLabel>Prijs per stuk (€)</FLabel>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <Inp type="number" value={detailTxn.price} onChange={e => setDetailTxn(t => ({ ...t, price: e.target.value }))} placeholder={h.currentPrice.toFixed(2)} style={{ flex: 1 }} />
+                    <button onClick={useCurrentPrice} title="Gebruik huidige koers"
+                      style={{ padding: '0 10px', background: '#0d2a1f', border: '1px solid #00d4aa44', borderRadius: 6, color: 'var(--accent)', cursor: 'pointer', fontFamily: 'DM Mono', fontSize: 10, whiteSpace: 'nowrap' }}>
+                      ↗ Huidig
+                    </button>
+                  </div>
+                </div>
+                <div><FLabel>Transactiekosten (€)</FLabel>
+                  <Inp type="number" value={detailTxn.fee} onChange={e => setDetailTxn(t => ({ ...t, fee: e.target.value }))} placeholder="0" /></div>
+              </div>
+              {detailTxn.qty && detailTxn.price && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: 'var(--surface)', borderRadius: 5, marginBottom: 10, fontFamily: 'DM Mono', fontSize: 11 }}>
+                  <span style={{ color: 'var(--muted)' }}>Totaal</span>
+                  <span>{fmtE((+detailTxn.qty * +detailTxn.price) + (+detailTxn.fee || 0))}</span>
+                </div>
+              )}
+              <Btn
+                label={detailSaving ? 'Verwerken…' : `${detailTxn.type === 'buy' ? 'Aankoop' : 'Verkoop'} registreren`}
+                variant={detailTxn.type === 'buy' ? 'accent' : 'danger'}
+                onClick={addDetailTxn}
+                disabled={detailSaving || !detailTxn.qty || !detailTxn.price}
+                style={{ width: '100%' }} />
+            </div>
+
+            {/* Transaction history for this holding */}
+            {holdingTxns.length > 0 && (
+              <div>
+                <SLabel text={`Transacties (${holdingTxns.length})`} />
+                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
+                      {['Datum','Type','Aantal','Prijs','Kosten','Totaal'].map(h => <th key={h} style={thS}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {holdingTxns.map(t => (
+                        <tr key={t.id} style={{ borderBottom: '0.5px solid var(--border)' }}>
+                          <Td style={{ fontSize: 10, color: 'var(--muted)' }}>{t.date}</Td>
+                          <Td><span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, fontFamily: 'DM Mono', textTransform: 'uppercase', background: t.type === 'buy' ? '#0d2a1f' : '#2d0a12', color: t.type === 'buy' ? 'var(--green)' : 'var(--red)' }}>{t.type}</span></Td>
+                          <Td style={{ fontSize: 11 }}>{t.qty}</Td>
+                          <Td style={{ fontSize: 11 }}>{fmtE(t.price)}</Td>
+                          <Td style={{ fontSize: 11, color: 'var(--yellow)' }}>{fmtE(t.fee)}</Td>
+                          <Td style={{ fontSize: 11, fontWeight: 500 }}>{fmtE(t.qty * t.price + t.fee)}</Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </Modal>
+        )
+      })()}
     </div>
   )
 }
