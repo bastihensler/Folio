@@ -26,6 +26,7 @@ export default function App() {
   const [csvMsg,        setCsvMsg]        = useState('')
   // Fix #5: declare isinResults state before it's used
   const [isinResults,   setIsinResults]   = useState([])
+  const [editingField,  setEditingField]  = useState(null)  // { id, field, value }
   const [isinLookup,    setIsinLookup]    = useState('idle')
   const fileRef = useRef()
 
@@ -476,6 +477,27 @@ export default function App() {
       country_breakdown: enriched.countries        || null,
       country:           enriched.country          || null,
     }
+    // Check if holding already exists — merge instead of creating duplicate
+    const existing = holdings.find(h => h.symbol === sym)
+    if (existing) {
+      const addQty    = +enriched.qty
+      const newQty    = existing.qty + addQty
+      const newAvg    = (existing.qty * existing.avgCost + addQty * avgCostEUR) / newQty
+      const mergedFee = finalFee || existing.annualFee
+      const mergedDiv = finalDiv || existing.dividendYield
+      const { error } = await sb.from('holdings')
+        .update({ qty: newQty, avg_cost: newAvg, annual_fee: mergedFee, dividend_yield: mergedDiv, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+      if (error) { alert(`Opslaan mislukt: ${error.message}`); return }
+      setHoldings(hs => hs.map(h => h.id === existing.id
+        ? { ...h, qty: newQty, avgCost: newAvg, annualFee: mergedFee, dividendYield: mergedDiv }
+        : h
+      ))
+      resetAddHolding()
+      setShowAddH(false)
+      return
+    }
+
     const { data, error } = await sb.from('holdings').insert(row).select().single()
     if (error) { alert(`Opslaan mislukt: ${error.message}`); return }
     setHoldings(hs => [...hs, {
@@ -494,6 +516,16 @@ export default function App() {
   const deleteHolding = async id => {
     const { error } = await sb.from('holdings').delete().eq('id', id)
     if (!error) setHoldings(hs => hs.filter(h => h.id !== id))
+  }
+
+  const saveFieldEdit = async (id, field, value) => {
+    const numVal = parseFloat(value) || 0
+    const dbField = field === 'dividendYield' ? 'dividend_yield' : 'annual_fee'
+    const { error } = await sb.from('holdings').update({ [dbField]: numVal, updated_at: new Date().toISOString() }).eq('id', id)
+    if (!error) {
+      setHoldings(hs => hs.map(h => h.id === id ? { ...h, [field]: numVal } : h))
+    }
+    setEditingField(null)
   }
 
   // ── Add Transaction ───────────────────────────────────────────────────
@@ -890,9 +922,35 @@ export default function App() {
                         <Td style={{ fontWeight: 500 }}>{fmtE(r.value)}</Td>
                         <Td style={{ color: r.gain >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{fmtE(r.gain)}</Td>
                         <Td style={{ color: r.gainPct >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{pct(r.gainPct)}</Td>
-                        <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{r.annualFee}%</Td>
-                        <Td style={{ color: 'var(--accent)', fontSize: 11 }}>
-                          {r.dividendYield > 0 ? `${r.dividendYield}%` : <span style={{ color: 'var(--muted)' }}>—</span>}
+                        <Td style={{ fontSize: 11 }}>
+                          {editingField?.id === r.id && editingField?.field === 'annualFee' ? (
+                            <input autoFocus type="number" defaultValue={r.annualFee}
+                              style={{ width: 52, background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 3, color: 'var(--yellow)', fontFamily: 'DM Mono', fontSize: 11, padding: '1px 4px', outline: 'none' }}
+                              onBlur={e => saveFieldEdit(r.id, 'annualFee', e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') saveFieldEdit(r.id, 'annualFee', e.target.value); if (e.key === 'Escape') setEditingField(null) }}
+                            />
+                          ) : (
+                            <span onClick={() => setEditingField({ id: r.id, field: 'annualFee' })}
+                              style={{ color: 'var(--yellow)', cursor: 'pointer', borderBottom: '1px dashed var(--border2)' }}
+                              title="Click to edit">
+                              {r.annualFee > 0 ? `${r.annualFee}%` : <span style={{ color: 'var(--muted)' }}>— %</span>}
+                            </span>
+                          )}
+                        </Td>
+                        <Td style={{ fontSize: 11 }}>
+                          {editingField?.id === r.id && editingField?.field === 'dividendYield' ? (
+                            <input autoFocus type="number" defaultValue={r.dividendYield}
+                              style={{ width: 52, background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 3, color: 'var(--accent)', fontFamily: 'DM Mono', fontSize: 11, padding: '1px 4px', outline: 'none' }}
+                              onBlur={e => saveFieldEdit(r.id, 'dividendYield', e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') saveFieldEdit(r.id, 'dividendYield', e.target.value); if (e.key === 'Escape') setEditingField(null) }}
+                            />
+                          ) : (
+                            <span onClick={() => setEditingField({ id: r.id, field: 'dividendYield' })}
+                              style={{ color: 'var(--accent)', cursor: 'pointer', borderBottom: '1px dashed var(--border2)' }}
+                              title="Click to edit">
+                              {r.dividendYield > 0 ? `${r.dividendYield}%` : <span style={{ color: 'var(--muted)' }}>— %</span>}
+                            </span>
+                          )}
                         </Td>
                         <Td style={{ color: 'var(--yellow)', fontSize: 11 }}>{fmtE(r.annCost)}</Td>
                         <Td style={{ color: 'var(--accent)', fontSize: 11 }}>{fmtE(r.annDiv)}</Td>
