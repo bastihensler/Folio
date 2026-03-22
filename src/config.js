@@ -84,7 +84,7 @@ export const ETF_DATA = {
 
   // ── US index ETFs ──────────────────────────────────────────────────────
   VOO: {
-    name: 'Vanguard S&P 500 ETF', ter: 0.03,
+    name: 'Vanguard S&P 500 ETF', ter: 0.03, dist: false,
     sectors:  { Technology: 31.4, Financials: 13.2, Healthcare: 12.1, 'Consumer Discretionary': 10.8, Industrials: 8.7, 'Communication Services': 8.5, 'Consumer Staples': 5.9, Energy: 3.8, Utilities: 2.4, Materials: 2.1, 'Real Estate': 2.3 },
     countries: { 'United States': 100 },
     holdings: [
@@ -112,7 +112,7 @@ export const ETF_DATA = {
   },
 
   QQQ: {
-    name: 'Invesco QQQ Trust', ter: 0.20,
+    name: 'Invesco QQQ Trust', ter: 0.20, dist: false,
     sectors:  { Technology: 51.2, 'Communication Services': 17.3, 'Consumer Discretionary': 13.6, Healthcare: 6.4, Industrials: 4.8, 'Consumer Staples': 4.1, Financials: 1.2, Utilities: 0.9, Materials: 0.5 },
     countries: { 'United States': 100 },
     holdings: [
@@ -141,7 +141,7 @@ export const ETF_DATA = {
 
   // ── Vanguard global ────────────────────────────────────────────────────
   'VWRL.AS': {
-    name: 'Vanguard FTSE All-World ETF', ter: 0.22,
+    name: 'Vanguard FTSE All-World ETF', ter: 0.22, dist: true,
     sectors:  { Technology: 24.8, Financials: 16.2, Healthcare: 11.3, Industrials: 10.9, 'Consumer Discretionary': 10.2, 'Communication Services': 7.8, 'Consumer Staples': 6.4, Energy: 4.8, Materials: 3.9, Utilities: 2.8, 'Real Estate': 2.5 },
     countries: { 'United States': 64.2, Japan: 5.8, 'United Kingdom': 4.1, France: 3.2, Canada: 3.1, Switzerland: 2.6, Germany: 2.4, Australia: 2.1, Netherlands: 1.2, 'South Korea': 1.8, Taiwan: 2.1, India: 1.9, Other: 5.5 },
     holdings: [
@@ -159,7 +159,7 @@ export const ETF_DATA = {
   },
 
   'VWCE.DE': {
-    name: 'Vanguard FTSE All-World Acc', ter: 0.22,
+    name: 'Vanguard FTSE All-World Acc', ter: 0.22, dist: false,
     sectors:  { Technology: 24.8, Financials: 16.2, Healthcare: 11.3, Industrials: 10.9, 'Consumer Discretionary': 10.2, 'Communication Services': 7.8, 'Consumer Staples': 6.4, Energy: 4.8, Materials: 3.9, Utilities: 2.8, 'Real Estate': 2.5 },
     countries: { 'United States': 64.2, Japan: 5.8, 'United Kingdom': 4.1, France: 3.2, Canada: 3.1, Switzerland: 2.6, Germany: 2.4, Australia: 2.1, Netherlands: 1.2, 'South Korea': 1.8, Taiwan: 2.1, India: 1.9, Other: 5.5 },
     holdings: [
@@ -176,7 +176,7 @@ export const ETF_DATA = {
 
   // ── iShares ────────────────────────────────────────────────────────────
   'IWDA.AS': {
-    name: 'iShares Core MSCI World ETF', ter: 0.20,
+    name: 'iShares Core MSCI World ETF', ter: 0.20, dist: false,
     sectors:  { Technology: 25.4, Financials: 15.3, Healthcare: 12.8, Industrials: 11.2, 'Consumer Discretionary': 10.6, 'Communication Services': 8.1, 'Consumer Staples': 6.2, Energy: 4.5, Materials: 3.2, Utilities: 2.2, 'Real Estate': 2.8 },
     countries: { 'United States': 70.8, Japan: 6.2, 'United Kingdom': 4.4, France: 3.4, Canada: 3.2, Switzerland: 2.8, Germany: 2.5, Australia: 2.2, Netherlands: 1.3, Sweden: 1.0, Other: 2.2 },
     holdings: [
@@ -194,7 +194,7 @@ export const ETF_DATA = {
   },
 
   'CSPX.AS': {
-    name: 'iShares Core S&P 500 ETF', ter: 0.07,
+    name: 'iShares Core S&P 500 ETF', ter: 0.07, dist: false,
     sectors:  { Technology: 31.4, Financials: 13.2, Healthcare: 12.1, 'Consumer Discretionary': 10.8, Industrials: 8.7, 'Communication Services': 8.5, 'Consumer Staples': 5.9, Energy: 3.8, Utilities: 2.4, Materials: 2.1, 'Real Estate': 2.3 },
     countries: { 'United States': 100 },
     holdings: [
@@ -212,7 +212,7 @@ export const ETF_DATA = {
   },
 
   'EMIM.AS': {
-    name: 'iShares Core MSCI EM IMI', ter: 0.18,
+    name: 'iShares Core MSCI EM IMI', ter: 0.18, dist: false,
     sectors:  { Technology: 22.1, Financials: 21.4, 'Consumer Discretionary': 12.3, 'Communication Services': 9.8, Materials: 8.2, Industrials: 6.9, Energy: 6.4, 'Consumer Staples': 5.8, Healthcare: 4.3, Utilities: 2.2, 'Real Estate': 1.4 },
     countries: { China: 27.1, India: 16.8, Taiwan: 14.2, 'South Korea': 11.4, Brazil: 5.8, 'Saudi Arabia': 4.1, 'South Africa': 3.4, Mexico: 2.8, Indonesia: 2.1, Thailand: 1.8, Other: 10.5 },
     holdings: [
@@ -226,7 +226,7 @@ export const ETF_DATA = {
 
   // ── Xtrackers ──────────────────────────────────────────────────────────
   'XDWD.DE': {
-    name: 'Xtrackers MSCI World Swap ETF', ter: 0.19,
+    name: 'Xtrackers MSCI World Swap ETF', ter: 0.19, dist: false,
     sectors:  { Technology: 25.4, Financials: 15.3, Healthcare: 12.8, Industrials: 11.2, 'Consumer Discretionary': 10.6, 'Communication Services': 8.1, 'Consumer Staples': 6.2, Energy: 4.5, Materials: 3.2, Utilities: 2.2, 'Real Estate': 2.8 },
     countries: { 'United States': 70.8, Japan: 6.2, 'United Kingdom': 4.4, France: 3.4, Canada: 3.2, Switzerland: 2.8, Germany: 2.5, Australia: 2.2, Netherlands: 1.3, Other: 3.2 },
     holdings: [
@@ -240,7 +240,7 @@ export const ETF_DATA = {
 
   // ── L&G ───────────────────────────────────────────────────────────────
   'AIAG.L': {
-    name: 'L&G Artificial Intelligence ETF', ter: 0.49,
+    name: 'L&G Artificial Intelligence ETF', ter: 0.49, dist: true,
     sectors:  { Technology: 68.4, 'Communication Services': 14.2, Industrials: 9.8, Healthcare: 4.2, Financials: 3.4 },
     countries: { 'United States': 82.4, Taiwan: 4.8, Netherlands: 3.2, China: 3.1, 'South Korea': 2.8, Other: 3.7 },
     holdings: [
@@ -257,7 +257,7 @@ export const ETF_DATA = {
 
   // ── ARK ───────────────────────────────────────────────────────────────
   ARKK: {
-    name: 'ARK Innovation ETF', ter: 0.75,
+    name: 'ARK Innovation ETF', ter: 0.75, dist: true,
     sectors:  { Technology: 42.1, Healthcare: 28.4, 'Communication Services': 14.8, Industrials: 9.2, Financials: 5.5 },
     countries: { 'United States': 88.4, Sweden: 4.2, Israel: 3.8, Other: 3.6 },
     holdings: [
@@ -271,7 +271,7 @@ export const ETF_DATA = {
 
   // ── iShares Core EURO STOXX 50 (SXRT) — IE00B53L3W79 — Acc ─────────
   'SXRT.DE': {
-    name: 'iShares Core EURO STOXX 50 ETF', ter: 0.10,
+    name: 'iShares Core EURO STOXX 50 ETF', ter: 0.10, dist: false,
     sectors: { Financials: 24.8, Industrials: 21.8, Technology: 16.7, 'Consumer Discretionary': 10.9, Healthcare: 6.0, 'Consumer Staples': 5.5, Utilities: 4.5, Energy: 4.1, Materials: 3.3, 'Communication Services': 2.4 },
     countries: { France: 30.0, Germany: 29.5, Netherlands: 18.1, Spain: 10.5, Italy: 7.3, Belgium: 1.5, Other: 3.1 },
     holdings: [
@@ -290,7 +290,7 @@ export const ETF_DATA = {
 
   // ── iShares Core MSCI EMU (SXR7) — IE00B53QG562 — Acc ──────────────
   'SXR7.DE': {
-    name: 'iShares Core MSCI EMU ETF', ter: 0.12,
+    name: 'iShares Core MSCI EMU ETF', ter: 0.12, dist: false,
     sectors: { Financials: 22.4, Industrials: 18.6, Technology: 13.8, 'Consumer Discretionary': 10.2, Healthcare: 9.4, 'Consumer Staples': 7.1, Utilities: 5.8, Energy: 4.2, Materials: 4.1, 'Communication Services': 2.8, 'Real Estate': 1.6 },
     countries: { France: 32.1, Germany: 26.4, Netherlands: 14.8, Spain: 9.2, Italy: 8.4, Belgium: 3.2, Finland: 2.1, Ireland: 1.8, Other: 2.0 },
     holdings: [
@@ -310,7 +310,7 @@ export const ETF_DATA = {
   // ── iShares Global Clean Energy (IQQH) — IE00B1XNHC34 — Dist ───────
   // ~1.2% dividend yield, TER 0.65%
   'IQQH.DE': {
-    name: 'iShares Global Clean Energy ETF', ter: 0.65, dividendYield: 1.17,
+    name: 'iShares Global Clean Energy ETF', ter: 0.65, dist: true, dividendYield: 1.17,
     sectors: { Utilities: 62.4, Technology: 18.8, Industrials: 12.6, Energy: 4.2, Materials: 2.0 },
     countries: { 'United States': 42.1, Denmark: 9.8, Spain: 7.4, China: 7.2, Germany: 5.8, 'United Kingdom': 4.9, Italy: 4.2, Brazil: 3.8, Canada: 3.4, Other: 11.4 },
     holdings: [
@@ -330,7 +330,7 @@ export const ETF_DATA = {
   // ── L&G Artificial Intelligence (AIAI) — IE00BK5BCD43 — Acc ─────────
   // Different from AIAG.L (which is distributing). This is accumulating.
   'AIAI.L': {
-    name: 'L&G Artificial Intelligence UCITS ETF', ter: 0.49,
+    name: 'L&G Artificial Intelligence UCITS ETF', ter: 0.49, dist: false,
     sectors: { Technology: 68.4, 'Communication Services': 14.2, Industrials: 9.8, Healthcare: 4.2, Financials: 3.4 },
     countries: { 'United States': 82.4, Taiwan: 4.8, Netherlands: 3.2, China: 3.1, 'South Korea': 2.8, Other: 3.7 },
     holdings: [
@@ -347,7 +347,7 @@ export const ETF_DATA = {
 
   // ── VanEck Video Gaming & Esports (ESPO) — IE00BYWQWR46 — Acc ───────
   'ESPO.AS': {
-    name: 'VanEck Video Gaming & Esports ETF', ter: 0.55,
+    name: 'VanEck Video Gaming & Esports ETF', ter: 0.55, dist: false,
     sectors: { Technology: 52.8, 'Communication Services': 38.4, 'Consumer Discretionary': 8.8 },
     countries: { 'United States': 38.2, Japan: 22.4, China: 14.8, 'South Korea': 8.4, Taiwan: 6.2, Other: 10.0 },
     holdings: [
@@ -365,7 +365,7 @@ export const ETF_DATA = {
   // ── Vanguard FTSE Emerging Markets (VFEM) — IE00B3VVMM84 — Dist ─────
   // ~2.8% div yield, TER 0.17%
   'VFEM.AS': {
-    name: 'Vanguard FTSE Emerging Markets ETF', ter: 0.17, dividendYield: 2.84,
+    name: 'Vanguard FTSE Emerging Markets ETF', ter: 0.17, dist: true, dividendYield: 2.84,
     sectors: { Technology: 22.4, Financials: 21.8, 'Consumer Discretionary': 12.6, 'Communication Services': 9.4, Materials: 8.4, Industrials: 7.2, Energy: 6.8, 'Consumer Staples': 5.8, Healthcare: 3.8, Utilities: 2.2, 'Real Estate': 1.4 },
     countries: { China: 26.8, India: 17.2, Taiwan: 14.8, 'South Korea': 11.2, Brazil: 5.4, 'Saudi Arabia': 4.2, 'South Africa': 3.6, Mexico: 2.8, Indonesia: 2.2, Thailand: 1.8, Other: 10.0 },
     holdings: [
@@ -383,7 +383,7 @@ export const ETF_DATA = {
   // ── Vanguard S&P 500 Dist (VUSA) — IE00B3XXRP09 — Dist ──────────────
   // ~1.3% div yield, TER 0.07%, same index as VOO
   'VUSA.AS': {
-    name: 'Vanguard S&P 500 UCITS ETF (Dist)', ter: 0.07, dividendYield: 1.31,
+    name: 'Vanguard S&P 500 UCITS ETF (Dist)', ter: 0.07, dist: true, dividendYield: 1.31,
     sectors: { Technology: 31.4, Financials: 13.2, Healthcare: 12.1, 'Consumer Discretionary': 10.8, Industrials: 8.7, 'Communication Services': 8.5, 'Consumer Staples': 5.9, Energy: 3.8, Utilities: 2.4, Materials: 2.1, 'Real Estate': 2.3 },
     countries: { 'United States': 100 },
     holdings: [
@@ -402,7 +402,7 @@ export const ETF_DATA = {
 
   // ── Xtrackers MSCI World IT (XDWT) — IE00BM67HT60 — Acc ─────────────
   'XDWT.DE': {
-    name: 'Xtrackers MSCI World Information Technology ETF', ter: 0.25,
+    name: 'Xtrackers MSCI World Information Technology ETF', ter: 0.25, dist: false,
     sectors: { Technology: 100 },
     countries: { 'United States': 84.2, Taiwan: 5.8, Netherlands: 3.2, Japan: 2.4, 'South Korea': 2.1, Other: 2.3 },
     holdings: [
@@ -421,7 +421,7 @@ export const ETF_DATA = {
 
   // ── Xtrackers MSCI World Materials (XDWM) — IE00BM67HS53 — Acc ──────
   'XDWM.DE': {
-    name: 'Xtrackers MSCI World Materials ETF', ter: 0.25,
+    name: 'Xtrackers MSCI World Materials ETF', ter: 0.25, dist: false,
     sectors: { Materials: 100 },
     countries: { 'United States': 30.4, Australia: 18.2, Japan: 9.4, Canada: 9.2, 'United Kingdom': 8.4, Germany: 5.8, Switzerland: 4.2, France: 3.8, Other: 10.6 },
     holdings: [
@@ -440,7 +440,7 @@ export const ETF_DATA = {
 
   // ── Xtrackers S&P 500 Equal Weight (XDEW) — IE00BLNMYC90 — Acc ──────
   'XDEW.DE': {
-    name: 'Xtrackers S&P 500 Equal Weight ETF', ter: 0.15,
+    name: 'Xtrackers S&P 500 Equal Weight ETF', ter: 0.15, dist: false,
     sectors: { Industrials: 14.8, Financials: 13.2, Technology: 12.8, Healthcare: 12.4, 'Consumer Discretionary': 10.8, 'Consumer Staples': 6.8, Energy: 6.4, Materials: 5.8, Utilities: 5.4, 'Real Estate': 5.2, 'Communication Services': 6.4 },
     countries: { 'United States': 100 },
     holdings: [
@@ -454,7 +454,7 @@ export const ETF_DATA = {
 
   // ── Xtrackers STOXX Europe 600 (DX2X) — LU0328475792 — Acc ──────────
   'DX2X.DE': {
-    name: 'Xtrackers STOXX Europe 600 ETF', ter: 0.20,
+    name: 'Xtrackers STOXX Europe 600 ETF', ter: 0.20, dist: false,
     sectors: { Financials: 18.4, Industrials: 16.8, Healthcare: 14.2, 'Consumer Staples': 10.8, Technology: 9.4, 'Consumer Discretionary': 9.2, Energy: 6.4, Materials: 5.8, Utilities: 4.8, 'Real Estate': 2.4, 'Communication Services': 1.8 },
     countries: { 'United Kingdom': 22.4, France: 17.8, Switzerland: 14.2, Germany: 13.8, Netherlands: 6.4, Sweden: 5.8, Denmark: 4.2, Spain: 3.8, Italy: 3.4, Other: 8.2 },
     holdings: [
@@ -474,7 +474,7 @@ export const ETF_DATA = {
   // ── iShares Core MSCI Europe Dist (IMEU/IQQY) — IE00B1YZSC51 ─────────
   // Dist, ~2.8% yield, TER 0.12%
   'IMEU.AS': {
-    name: 'iShares Core MSCI Europe ETF (Dist)', ter: 0.12, dividendYield: 2.84,
+    name: 'iShares Core MSCI Europe ETF (Dist)', ter: 0.12, dist: true, dividendYield: 2.84,
     sectors: { Financials: 18.8, Healthcare: 14.4, Industrials: 14.2, 'Consumer Staples': 11.2, Technology: 8.4, 'Consumer Discretionary': 8.2, Energy: 6.8, Materials: 5.4, Utilities: 4.8, 'Communication Services': 4.2, 'Real Estate': 3.6 },
     countries: { 'United Kingdom': 22.4, France: 15.8, Switzerland: 13.4, Germany: 12.8, Netherlands: 5.8, Sweden: 5.4, Denmark: 4.8, Spain: 4.2, Italy: 3.8, Other: 11.6 },
     holdings: [
@@ -494,7 +494,7 @@ export const ETF_DATA = {
   // ── iShares STOXX Global Dividend 100 (ISPA/EXSH) — DE000A0F5UH1 ────
   // Dist, ~4.2% yield, TER 0.46%
   'ISPA.DE': {
-    name: 'iShares STOXX Global Select Dividend 100 ETF', ter: 0.46, dividendYield: 4.21,
+    name: 'iShares STOXX Global Select Dividend 100 ETF', ter: 0.46, dist: true, dividendYield: 4.21,
     sectors: { Financials: 22.4, Utilities: 14.8, 'Consumer Staples': 12.4, Energy: 11.2, Industrials: 10.8, 'Real Estate': 9.4, Materials: 6.2, Healthcare: 5.8, Technology: 4.2, 'Communication Services': 2.8 },
     countries: { 'United States': 22.4, Japan: 14.8, Australia: 11.2, Canada: 9.4, 'United Kingdom': 8.8, Germany: 6.4, France: 5.8, Switzerland: 4.2, Netherlands: 3.4, Other: 13.6 },
     holdings: [
@@ -514,7 +514,7 @@ export const ETF_DATA = {
   // ── iShares STOXX Europe Small 200 (EXSE) — DE000A0D8QZ7 ─────────────
   // Dist, ~2.2% yield, TER 0.16%
   'EXSE.DE': {
-    name: 'iShares STOXX Europe Small 200 ETF', ter: 0.16, dividendYield: 2.21,
+    name: 'iShares STOXX Europe Small 200 ETF', ter: 0.16, dist: true, dividendYield: 2.21,
     sectors: { Industrials: 22.4, Technology: 14.8, 'Consumer Discretionary': 13.2, Healthcare: 11.4, Financials: 10.8, Materials: 8.4, 'Consumer Staples': 6.2, 'Real Estate': 5.8, Energy: 3.4, Utilities: 3.6 },
     countries: { 'United Kingdom': 20.4, Sweden: 14.8, Germany: 12.4, Switzerland: 9.8, France: 9.2, Netherlands: 6.4, Denmark: 5.8, Italy: 5.2, Spain: 3.8, Other: 12.2 },
     holdings: [
@@ -529,7 +529,7 @@ export const ETF_DATA = {
   // ── VanEck World Equal Weight (TSWE) — NL0010408704 — Dist ───────────
   // Dist, ~1.8% yield, TER 0.20%
   'TSWE.AS': {
-    name: 'VanEck World Equal Weight Screened ETF', ter: 0.20, dividendYield: 1.84,
+    name: 'VanEck World Equal Weight Screened ETF', ter: 0.20, dist: true, dividendYield: 1.84,
     sectors: { Technology: 14.8, Industrials: 14.2, Financials: 13.8, Healthcare: 13.4, 'Consumer Discretionary': 10.8, 'Consumer Staples': 8.2, Energy: 6.4, Materials: 5.8, Utilities: 5.4, 'Real Estate': 3.6, 'Communication Services': 3.6 },
     countries: { 'United States': 52.4, Japan: 9.4, 'United Kingdom': 5.8, Canada: 4.8, France: 4.2, Germany: 3.8, Switzerland: 3.4, Australia: 3.2, Netherlands: 2.4, Other: 10.6 },
     holdings: [
@@ -543,7 +543,7 @@ export const ETF_DATA = {
 
   // ── SPDR MSCI World Technology (SPFT) — IE00BYTRRD19 — Acc ───────────
   'SPFT.DE': {
-    name: 'SPDR MSCI World Technology ETF', ter: 0.30,
+    name: 'SPDR MSCI World Technology ETF', ter: 0.30, dist: false,
     sectors: { Technology: 100 },
     countries: { 'United States': 84.2, Taiwan: 5.4, Netherlands: 3.2, Japan: 2.6, 'South Korea': 2.2, Other: 2.4 },
     holdings: [
@@ -560,7 +560,7 @@ export const ETF_DATA = {
 
   // ── Amundi MSCI World (LCUW/CW8) — LU0274211480 — Acc ────────────────
   'LCUW.DE': {
-    name: 'Amundi MSCI World UCITS ETF', ter: 0.38,
+    name: 'Amundi MSCI World UCITS ETF', ter: 0.38, dist: false,
     sectors: { Technology: 25.4, Financials: 15.3, Healthcare: 12.8, Industrials: 11.2, 'Consumer Discretionary': 10.6, 'Communication Services': 8.1, 'Consumer Staples': 6.2, Energy: 4.5, Materials: 3.2, Utilities: 2.2, 'Real Estate': 2.8 },
     countries: { 'United States': 70.8, Japan: 6.2, 'United Kingdom': 4.4, France: 3.4, Canada: 3.2, Switzerland: 2.8, Germany: 2.5, Australia: 2.2, Netherlands: 1.3, Other: 3.2 },
     holdings: [
@@ -577,7 +577,7 @@ export const ETF_DATA = {
 
   // ── Xtrackers MSCI World Swap (DBXW) — LU0852473528 — Acc ────────────
   'DBXW.DE': {
-    name: 'Xtrackers MSCI World Swap UCITS ETF', ter: 0.19,
+    name: 'Xtrackers MSCI World Swap UCITS ETF', ter: 0.19, dist: false,
     sectors: { Technology: 25.4, Financials: 15.3, Healthcare: 12.8, Industrials: 11.2, 'Consumer Discretionary': 10.6, 'Communication Services': 8.1, 'Consumer Staples': 6.2, Energy: 4.5, Materials: 3.2, Utilities: 2.2, 'Real Estate': 2.8 },
     countries: { 'United States': 70.8, Japan: 6.2, 'United Kingdom': 4.4, France: 3.4, Canada: 3.2, Switzerland: 2.8, Germany: 2.5, Australia: 2.2, Netherlands: 1.3, Other: 3.2 },
     holdings: [
@@ -591,7 +591,7 @@ export const ETF_DATA = {
 
   // ── Xtrackers AI & Big Data (XAIX) — IE00BGV5VN51 — Acc ─────────────
   'XAIX.DE': {
-    name: 'Xtrackers Artificial Intelligence & Big Data ETF', ter: 0.35,
+    name: 'Xtrackers Artificial Intelligence & Big Data ETF', ter: 0.35, dist: false,
     sectors: { Technology: 72.4, 'Communication Services': 16.8, Industrials: 6.4, Healthcare: 2.8, Financials: 1.6 },
     countries: { 'United States': 78.4, Taiwan: 5.8, Netherlands: 3.4, China: 3.2, Japan: 2.8, 'South Korea': 2.4, Other: 4.0 },
     holdings: [
@@ -608,7 +608,7 @@ export const ETF_DATA = {
 
   // ── iShares MSCI Europe Consumer Staples (ESIS) — IE00BMW42074 — Acc ─
   'ESIS.DE': {
-    name: 'iShares MSCI Europe Consumer Staples ETF', ter: 0.18,
+    name: 'iShares MSCI Europe Consumer Staples ETF', ter: 0.18, dist: false,
     sectors: { 'Consumer Staples': 100 },
     countries: { 'United Kingdom': 22.4, Switzerland: 20.8, France: 16.4, Netherlands: 12.4, Belgium: 8.2, Germany: 7.4, Denmark: 6.8, Sweden: 3.8, Other: 1.8 },
     holdings: [
@@ -625,7 +625,7 @@ export const ETF_DATA = {
 
   // ── iShares MSCI Europe Consumer Disc (ESID) — IE00BMWXKN31 — Acc ───
   'ESID.DE': {
-    name: 'iShares MSCI Europe Consumer Discretionary ETF', ter: 0.18,
+    name: 'iShares MSCI Europe Consumer Discretionary ETF', ter: 0.18, dist: false,
     sectors: { 'Consumer Discretionary': 100 },
     countries: { France: 24.2, Germany: 21.4, 'United Kingdom': 14.8, Sweden: 10.4, Italy: 8.2, Switzerland: 6.4, Netherlands: 5.8, Other: 8.8 },
     holdings: [
@@ -642,7 +642,7 @@ export const ETF_DATA = {
 
   // ── Amundi STOXX Europe 600 Industrials (C6I) — LU1834987890 — Acc ───
   'C6I.PA': {
-    name: 'Amundi STOXX Europe 600 Industrials ETF', ter: 0.30,
+    name: 'Amundi STOXX Europe 600 Industrials ETF', ter: 0.30, dist: false,
     sectors: { Industrials: 100 },
     countries: { France: 18.4, Germany: 16.8, 'United Kingdom': 14.2, Sweden: 12.4, Switzerland: 9.8, Denmark: 7.4, Spain: 5.8, Netherlands: 4.8, Other: 10.4 },
     holdings: [
@@ -661,7 +661,7 @@ export const ETF_DATA = {
   // ISIN: IE00B8GKDB10 | TER: 0.29% | Dist quarterly ~2.6% yield
   // Tickers: VHYL.AS (Amsterdam), VGWD.DE (Xetra), VHYL.L (London)
   'VHYL.AS': {
-    name: 'Vanguard FTSE All-World High Dividend Yield ETF', ter: 0.29,
+    name: 'Vanguard FTSE All-World High Dividend Yield ETF', ter: 0.29, dist: true,
     dividendYield: 2.64,
     sectors: { Financials: 22.1, Industrials: 14.8, Healthcare: 11.2, Energy: 9.4, 'Consumer Staples': 9.1, Technology: 8.3, Materials: 6.2, Utilities: 5.8, 'Consumer Discretionary': 5.4, 'Real Estate': 4.2, 'Communication Services': 3.5 },
     countries: { 'United States': 17.8, Japan: 14.2, 'United Kingdom': 9.1, Australia: 8.4, Canada: 6.8, France: 5.2, Germany: 4.8, Switzerland: 4.1, China: 3.9, Taiwan: 3.4, 'South Korea': 3.1, Other: 19.2 },
@@ -687,7 +687,7 @@ export const ETF_DATA = {
   // ── Xtrackers Dividend ─────────────────────────────────────────────────
   // ISIN: LU0292096186 | TER: 0.50% | Dist quarterly ~4.5% yield
   'XGSD.DE': {
-    name: 'Xtrackers STOXX Global Select Dividend 100', ter: 0.50,
+    name: 'Xtrackers STOXX Global Select Dividend 100', ter: 0.50, dist: true,
     dividendYield: 4.57,
     sectors:  { Technology: 36.2, Industrials: 15.8, Financials: 9.4, Healthcare: 8.3, 'Real Estate': 6.3, Energy: 6.0, 'Consumer Staples': 5.8, 'Consumer Discretionary': 5.7, 'Communication Services': 5.1, Materials: 0.9, Utilities: 0.7 },
     countries: { 'United States': 38.4, Japan: 12.8, Australia: 10.2, 'United Kingdom': 8.4, Canada: 7.6, Germany: 5.2, France: 4.1, Switzerland: 3.8, Netherlands: 2.4, Other: 7.1 },
@@ -964,10 +964,11 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
   // Curated ETF_DATA is authoritative for TER, dividend yield, holdings, sectors, countries.
   // Yahoo Finance is unreliable for UCITS ETF dividend data — use it for price only.
   const curatedTer      = etfMeta?.ter           ?? null
-  const curatedDivYield = etfMeta?.dividendYield  ?? null  // stored as % e.g. 2.64
+  const curatedDivYield = etfMeta?.dividendYield  ?? null
   const curatedHoldings = etfMeta?.holdings       ?? null
   const curatedSectors  = etfMeta?.sectors        ?? null
   const curatedCountries= etfMeta?.countries      ?? null
+  const curatedDist     = etfMeta != null ? (etfMeta.dist ?? null) : null
 
   // Primary: Yahoo for price + dividend yield
   let priceEUR = null
@@ -999,6 +1000,7 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
         dividendYield: divYield,
         annualFee:     curatedTer ?? q.etf?.ter ?? null,
         holdings, sectors, countries: curatedCountries,
+        dist: etfMeta?.dist ?? null,  // true=distributing, false=acc, null=unknown
       }
     }
   } catch (e) { console.warn('[fetchPriceAndYield]', symbol, e?.message) }
@@ -1035,6 +1037,7 @@ export async function fetchPriceAndYield(symbol, type, fxRates = DEFAULT_FX) {
       price: priceEUR, dividendYield: divYield,
       annualFee: curatedTer, holdings: curatedHoldings,
       sectors: curatedSectors, countries: curatedCountries,
+      dist: curatedDist,
     }
   }
 

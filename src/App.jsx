@@ -106,6 +106,7 @@ export default function App() {
         country_breakdown: freshCountries,
         annual_fee:        etfMeta.ter,
         dividend_yield:    etfMeta.dividendYield ?? h.dividendYield,
+        dist:              etfMeta.dist ?? null,
         sector:            topSec || h.sector,
       }).eq('id', h.id)
       setHoldings(hs => hs.map(x => x.id !== h.id ? x : {
@@ -115,6 +116,7 @@ export default function App() {
         countryBreakdown: freshCountries,
         annualFee:        etfMeta.ter,
         dividendYield:    etfMeta.dividendYield ?? x.dividendYield,
+        dist:             etfMeta.dist ?? x.dist,
         sector:           topSec || x.sector,
       }))
     })
@@ -167,8 +169,9 @@ export default function App() {
       sector: r.sector, annualFee: +r.annual_fee, dividendYield: +r.dividend_yield,
       etfHoldings:      r.etf_holdings      || null,
       sectorBreakdown:  r.sector_breakdown  || null,
-      countryBreakdown: r.country_breakdown || null,
-      country:          r.country           || '',    // for direct stocks
+      countryBreakdown:  r.country_breakdown || null,
+      country:           r.country           || '',
+      dist:              r.dist ?? null,  // true=distributing, false=acc, null=unknown
     })))
     if (t) setTxns(t.map(r => ({
       id: r.id, date: r.date, symbol: r.symbol, type: r.type,
@@ -300,6 +303,7 @@ export default function App() {
             sector_breakdown:  freshSectorBreakdown,
             country_breakdown: freshCountryBreakdown,
             country:           freshCountry,
+            dist:              etfMeta?.dist ?? data?.dist ?? h.dist ?? null,
             updated_at:        new Date().toISOString()
           })
           .eq('id', h.id)
@@ -314,6 +318,7 @@ export default function App() {
           sectorBreakdown:  freshSectorBreakdown,
           countryBreakdown: freshCountryBreakdown,
           country:          freshCountry,
+          dist:             etfMeta?.dist ?? data?.dist ?? h.dist ?? null,
         }
       }))
       updated.push(...results)
@@ -430,6 +435,7 @@ export default function App() {
       sectors,
       countries,
       country:      type !== 'etf' ? stockCountry(sym) : null,
+      dist:         priceData?.dist ?? etfMeta?.dist ?? null,
       enriched:     true,
     }
   }
@@ -524,6 +530,7 @@ export default function App() {
       sector_breakdown:  enriched.sectors          || null,
       country_breakdown: enriched.countries        || null,
       country:           enriched.country          || null,
+      dist:           enriched.dist ?? null,
     }
     // Check if holding already exists — merge instead of creating duplicate
     const existing = holdings.find(h => h.symbol === sym)
@@ -556,6 +563,7 @@ export default function App() {
       sectorBreakdown:  enriched.sectors      || null,
       countryBreakdown: enriched.countries    || null,
       country:          enriched.country      || '',
+      dist:             enriched.dist         ?? null,
     }])
     resetAddHolding()
     setShowAddH(false)
@@ -566,6 +574,44 @@ export default function App() {
     if (!error) setHoldings(hs => hs.filter(h => h.id !== id))
   }
 
+
+  const exportCSV = () => {
+    const now = new Date().toISOString().slice(0, 10)
+    const headers = ['symbol','name','type','dist','qty','avgCost','currentPrice','value','gain','gainPct','annualFee','dividendYield','annCost','annDiv','netPA','sector','country']
+    const rows = C.rows.map(r => {
+      const net = r.annDiv - r.annCost
+      const distStr = r.dist === true ? 'dist' : r.dist === false ? 'acc' : ''
+      return [
+        r.symbol, `"${(r.name||'').replace(/"/g,'""')}"`, r.type, distStr,
+        r.qty, r.avgCost.toFixed(4), r.currentPrice.toFixed(4),
+        r.value.toFixed(2), r.gain.toFixed(2), r.gainPct.toFixed(2),
+        r.annualFee, r.dividendYield, r.annCost.toFixed(2), r.annDiv.toFixed(2),
+        net.toFixed(2), `"${(r.sector||'').replace(/"/g,'""')}"`,
+        `"${(r.country||'').replace(/"/g,'""')}"`
+      ].join(',')
+    })
+    const csv = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = Object.assign(document.createElement('a'), { href: url, download: `folio-${now}.csv` })
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  const exportTransactionsCSV = () => {
+    const now = new Date().toISOString().slice(0, 10)
+    const headers = ['date','symbol','type','qty','price','fee','total','note']
+    const rows = C.txnRows.map(r => [
+      r.date, r.symbol, r.type, r.qty,
+      r.price.toFixed(4), r.fee.toFixed(4), r.totalCostTxn.toFixed(2),
+      `"${(r.note||'').replace(/"/g,'""')}"`
+    ].join(','))
+    const csv = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = Object.assign(document.createElement('a'), { href: url, download: `folio-transactions-${now}.csv` })
+    a.click(); URL.revokeObjectURL(url)
+  }
+
   const saveFieldEdit = async (id, field, value) => {
     const numVal = parseFloat(value) || 0
     const dbField = field === 'dividendYield' ? 'dividend_yield' : 'annual_fee'
@@ -574,6 +620,97 @@ export default function App() {
       setHoldings(hs => hs.map(h => h.id === id ? { ...h, [field]: numVal } : h))
     }
     setEditingField(null)
+  }
+
+  // ── CSV Export ─────────────────────────────────────────────────────────
+  const downloadCSV = (rows, filename) => {
+    const csv = rows.map(r => r.map(v => {
+      const s = String(v ?? '')
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
+    }).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a'); a.href = url; a.download = filename; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportHoldings = () => {
+    const headers = ['Symbol','Name','Type','Dist/Acc','Qty','Avg Cost (€)','Current Price (€)','Value (€)','Gain (€)','Gain %','Sector','Country','TER %','Div Yield %','Ann Cost (€)','Ann Div (€)','Net Income p.a. (€)','Holdings Count']
+    const rows = C.rows.map(r => [
+      r.symbol, r.name, r.type,
+      r.dist === true ? 'Distributing' : r.dist === false ? 'Accumulating' : '',
+      r.qty.toFixed(4),
+      r.avgCost.toFixed(4),
+      r.currentPrice.toFixed(4),
+      r.value.toFixed(2),
+      r.gain.toFixed(2),
+      r.gainPct.toFixed(2),
+      r.sector || '',
+      r.country || '',
+      r.annualFee,
+      r.dividendYield,
+      r.annCost.toFixed(2),
+      r.annDiv.toFixed(2),
+      (r.annDiv - r.annCost).toFixed(2),
+      r.etfHoldings?.length ?? '',
+    ])
+    downloadCSV([headers, ...rows], `folio-holdings-${new Date().toISOString().slice(0,10)}.csv`)
+  }
+
+  const exportTransactions = () => {
+    const headers = ['Date','Symbol','Type','Qty','Price (€)','Fee (€)','Total (€)','Current Value (€)','P&L (€)','Note']
+    const rows = C.txnRows.map(t => [
+      t.date, t.symbol, t.type, t.qty,
+      t.price.toFixed(4),
+      t.fee.toFixed(2),
+      t.totalCostTxn.toFixed(2),
+      t.currentVal.toFixed(2),
+      t.pnl.toFixed(2),
+      t.note || '',
+    ])
+    downloadCSV([headers, ...rows], `folio-transactions-${new Date().toISOString().slice(0,10)}.csv`)
+  }
+
+  const exportETFs = () => {
+    const headers = ['Symbol','Name','Type','Dist/Acc','Qty','Avg Cost (€)','Current Price (€)','Value (€)','Gain (€)','Gain %','TER %','Dist Yield %','Ann Cost (€)','Ann Div (€)','Net p.a. (€)','Holdings Count','Top 5 Holdings']
+    const eRows = C.rows.filter(r => r.type === 'etf')
+    const rows = eRows.map(r => [
+      r.symbol, r.name, 'ETF',
+      r.dist === true ? 'Distributing' : r.dist === false ? 'Accumulating' : '',
+      r.qty.toFixed(4),
+      r.avgCost.toFixed(4),
+      r.currentPrice.toFixed(4),
+      r.value.toFixed(2),
+      r.gain.toFixed(2),
+      r.gainPct.toFixed(2),
+      r.annualFee,
+      r.dividendYield,
+      r.annCost.toFixed(2),
+      r.annDiv.toFixed(2),
+      (r.annDiv - r.annCost).toFixed(2),
+      r.etfHoldings?.length ?? '',
+      r.etfHoldings?.slice(0,5).map(h => `${h.symbol} ${h.weight}%`).join('; ') ?? '',
+    ])
+    downloadCSV([headers, ...rows], `folio-etfs-${new Date().toISOString().slice(0,10)}.csv`)
+  }
+
+  const exportStocks = () => {
+    const headers = ['Symbol','Name','Qty','Avg Cost (€)','Current Price (€)','Value (€)','Gain (€)','Gain %','Sector','Country','Div Yield %','Ann Div (€)']
+    const sRows = C.rows.filter(r => r.type === 'stock' || r.type === 'crypto')
+    const rows = sRows.map(r => [
+      r.symbol, r.name,
+      r.qty.toFixed(4),
+      r.avgCost.toFixed(4),
+      r.currentPrice.toFixed(4),
+      r.value.toFixed(2),
+      r.gain.toFixed(2),
+      r.gainPct.toFixed(2),
+      r.sector || '',
+      r.country || '',
+      r.dividendYield,
+      r.annDiv.toFixed(2),
+    ])
+    downloadCSV([headers, ...rows], `folio-stocks-${new Date().toISOString().slice(0,10)}.csv`)
   }
 
   // ── Add Transaction ───────────────────────────────────────────────────
@@ -823,6 +960,7 @@ export default function App() {
             {fetchStatus === 'loading' ? 'Fetching…' : 'Refresh'}
           </button>
           <Btn label="↑ CSV" onClick={() => fileRef.current.click()} style={{ padding: '7px 11px', fontSize: 11 }} />
+          <Btn label="↓ Export" onClick={exportCSV} style={{ padding: '7px 11px', fontSize: 11, color: 'var(--accent)', borderColor: 'var(--accent)' }} />
           <Btn label="+ Transaction" onClick={() => setShowAddT(true)} style={{ padding: '7px 11px', fontSize: 11, color: 'var(--accent)', borderColor: 'var(--accent)' }} />
           <Btn label="+ Holding" variant="accent" onClick={() => setShowAddH(true)} style={{ padding: '7px 11px', fontSize: 11 }} />
           <button onClick={() => setShowProfile(true)} title={user.email} style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--surface2)', border: '1px solid var(--border2)', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>👤</button>
@@ -953,6 +1091,9 @@ export default function App() {
           {/* ── HOLDINGS ── */}
           {tab === 'holdings' && (
             <Card>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                <Btn label="↓ Export CSV" onClick={exportHoldings} style={{ fontSize: 11, padding: '5px 12px' }} />
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 880 }}>
                   <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
@@ -1046,6 +1187,9 @@ export default function App() {
             const sad = sRows.reduce((s, r) => s + r.annDiv, 0)
             return (
               <Card>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                  <Btn label="↓ Export CSV" onClick={exportStocks} style={{ fontSize: 11, padding: '5px 12px' }} />
+                </div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
                     <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
@@ -1116,11 +1260,15 @@ export default function App() {
             const ead = eRows.reduce((s, r) => s + r.annDiv, 0)
             return (
               <Card>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                  <Btn label="↓ Export CSV" onClick={exportETFs} style={{ fontSize: 11, padding: '5px 12px' }} />
+                </div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                     <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
                       <SortTh label="Symbol"   tabKey="etfs" col="symbol" />
                       <SortTh label="Name"     tabKey="etfs" col="name" />
+                      <SortTh label="Type"     tabKey="etfs" col="dist" />
                       <SortTh label="Qty"      tabKey="etfs" col="qty" />
                       <SortTh label="Avg Cost" tabKey="etfs" col="avgCost" />
                       <SortTh label="Current"  tabKey="etfs" col="currentPrice" />
@@ -1140,6 +1288,11 @@ export default function App() {
                         <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                           <Td style={{ fontWeight: 600 }}>{r.symbol}</Td>
                           <Td style={{ color: 'var(--muted)', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Td>
+                          <Td>
+                            {r.dist === true  && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: '#0d2a1f', color: 'var(--accent)', fontFamily: 'DM Mono' }}>DIST</span>}
+                            {r.dist === false && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: '#0d1a2a', color: 'var(--blue)',   fontFamily: 'DM Mono' }}>ACC</span>}
+                            {r.dist == null   && <span style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono' }}>—</span>}
+                          </Td>
                           <Td style={{ fontSize: 11 }}>{fmtN(r.qty, 2)}</Td>
                           <Td style={{ fontSize: 11 }}>{fmtE(r.avgCost)}</Td>
                           <Td style={{ fontSize: 11 }}>{fmtE(r.currentPrice)}</Td>
@@ -1187,7 +1340,7 @@ export default function App() {
                       )})}
                     </tbody>
                     <tfoot><tr style={{ borderTop: '2px solid var(--border2)' }}>
-                      <td colSpan={5} style={{ padding: '8px', fontFamily: 'DM Mono', fontSize: 10, color: 'var(--muted)' }}>TOTAL · {eRows.length} ETFs</td>
+                      <td colSpan={6} style={{ padding: '8px', fontFamily: 'DM Mono', fontSize: 10, color: 'var(--muted)' }}>TOTAL · {eRows.length} ETFs</td>
                       <Td style={{ fontWeight: 500 }}>{fmtE(ev)}</Td>
                       <Td style={{ color: eg >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtE(eg)}</Td>
                       <Td style={{ color: eg >= 0 ? 'var(--green)' : 'var(--red)' }}>{ec ? pct((eg/ec)*100) : '—'}</Td>
@@ -1273,7 +1426,10 @@ export default function App() {
                 ))}
               </div>
               <Card>
-                <SLabel text="Ledger" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <SLabel text="Ledger" />
+                  <button onClick={exportTransactionsCSV} style={{ fontSize: 10, fontFamily: 'DM Mono', background: 'var(--surface2)', border: '1px solid var(--border2)', color: 'var(--muted)', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>↓ Export CSV</button>
+                </div>
                 <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                   <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
                     <SortTh label="Date"        tabKey="txns" col="date" />
