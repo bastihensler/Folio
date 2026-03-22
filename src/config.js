@@ -623,7 +623,7 @@ export const ETF_DATA = {
     ],
   },
 
-  // ── iShares MSCI Europe Consumer Disc (ESID) — IE00BMWXKN31 — Acc ───
+  // ── iShares MSCI Europe Consumer Disc (ESID) — separate ISIN, keep ETF ─
   'ESID.DE': {
     name: 'iShares MSCI Europe Consumer Discretionary ETF', ter: 0.18, dist: false,
     sectors: { 'Consumer Discretionary': 100 },
@@ -637,6 +637,37 @@ export const ETF_DATA = {
       { symbol: 'KER.PA',   name: 'Kering',            weight: 4.12 },
       { symbol: 'AD.AS',    name: 'Ahold Delhaize',    weight: 3.84 },
       { symbol: 'ITX.MC',   name: 'Inditex',           weight: 3.62 },
+    ],
+  },
+
+  // ── HSBC Hang Seng Tech UCITS ETF — IE00BMWXKN31 — Acc ───────────────
+  // Trades in HKD. Listed as HSTE.L (London), 3033.HK (Hong Kong)
+  // Tracks top 30 tech stocks on HKEX: Meituan, Tencent, Alibaba, JD, Xiaomi etc.
+  'HSTE.L': {
+    name: 'HSBC Hang Seng Tech UCITS ETF', ter: 0.50, dist: false,
+    sectors: { Technology: 42.8, 'Consumer Discretionary': 28.4, 'Communication Services': 16.2, Financials: 8.4, Industrials: 4.2 },
+    countries: { 'Hong Kong / China': 98.2, Other: 1.8 },
+    holdings: [
+      { symbol: '700.HK',  name: 'Tencent Holdings',   weight: 9.84 },
+      { symbol: '9988.HK', name: 'Alibaba Group',      weight: 8.42 },
+      { symbol: '3690.HK', name: 'Meituan',            weight: 7.94 },
+      { symbol: '9618.HK', name: 'JD.com',             weight: 6.84 },
+      { symbol: '1810.HK', name: 'Xiaomi Corp',        weight: 6.42 },
+      { symbol: '9999.HK', name: 'NetEase',            weight: 5.18 },
+      { symbol: '2382.HK', name: 'Sunny Optical',      weight: 4.84 },
+      { symbol: '6618.HK', name: 'JD Health',          weight: 4.12 },
+      { symbol: '3888.HK', name: 'Kingsoft Corp',      weight: 3.94 },
+      { symbol: '1024.HK', name: 'Kuaishou',           weight: 3.62 },
+      { symbol: '268.HK',  name: 'Kingdee Int.',       weight: 3.18 },
+      { symbol: '2015.HK', name: 'Li Auto',            weight: 2.94 },
+      { symbol: '9866.HK', name: 'NIO Inc.',           weight: 2.84 },
+      { symbol: '285.HK',  name: 'BYD Electronic',     weight: 2.64 },
+      { symbol: '772.HK',  name: 'China Literature',   weight: 2.42 },
+      { symbol: '9626.HK', name: 'Bilibili',           weight: 2.18 },
+      { symbol: '2013.HK', name: 'Weimob Inc.',        weight: 1.94 },
+      { symbol: '6690.HK', name: 'Haier Smart Home',   weight: 1.84 },
+      { symbol: '1347.HK', name: 'Hua Hong Semi',      weight: 1.62 },
+      { symbol: '9961.HK', name: 'Trip.com Group',     weight: 1.48 },
     ],
   },
 
@@ -745,7 +776,7 @@ export const ISIN_TO_ETF = {
   'DE000A0F5UH1': 'ISPA.DE',  // iShares STOXX Global Select Dividend 100
   'DE000A0D8QZ7': 'EXSE.DE',  // iShares STOXX Europe Small 200 Dist
   'IE00BMW42074': 'ESIS.DE',  // iShares MSCI Europe Consumer Staples Acc
-  'IE00BMWXKN31': 'ESID.DE',  // iShares MSCI Europe Consumer Discretionary Acc
+  'IE00BMWXKN31': 'HSTE.L',   // HSBC Hang Seng Tech UCITS ETF (HKD, London-listed)
   // Xtrackers
   'LU0292096186': 'XGSD.DE',  // Xtrackers STOXX Global Select Dividend 100
   'LU0274208692': 'XDWD.DE',  // Xtrackers MSCI World (old ISIN)

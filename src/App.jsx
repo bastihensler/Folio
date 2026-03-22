@@ -80,7 +80,7 @@ export default function App() {
 
   useEffect(() => { if (user) loadData() }, [user])
 
-  // On load: fix wrong types AND backfill missing ETF metadata
+  // On load: fix wrong types AND wrong symbols from ISIN lookup errors
   useEffect(() => {
     if (!holdings.length) return
     // Fix holdings wrongly stored as 'stock' that are actually ETFs
