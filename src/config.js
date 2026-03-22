@@ -760,31 +760,7 @@ export const ETF_ALIASES = {
 }
 
 // Common US stock ISINs → Yahoo ticker (Finnhub ISIN search unreliable for US stocks)
-export const US_ISIN_TO_TICKER = {
-  'US0846707026': 'BRK-B',   // Berkshire Hathaway B (Yahoo uses BRK-B not BRK.B)
-  'US0231351067': 'AMZN',    // Amazon
-  'US0378331005': 'AAPL',    // Apple
-  'US5949181045': 'MSFT',    // Microsoft
-  'US67066G1040': 'NVDA',    // NVIDIA
-  'US02079K3059': 'GOOGL',   // Alphabet A
-  'US30303M1027': 'META',    // Meta Platforms
-  'US88160R1014': 'TSLA',    // Tesla
-  'US46625H1005': 'JPM',     // JPMorgan Chase
-  'US92826C8394': 'V',       // Visa
-  'US57636Q1040': 'MA',      // Mastercard
-  'US4592001014': 'IBM',     // IBM
-  'US4581401001': 'INTC',    // Intel
-  'US6311031081': 'MU',      // Micron
-  'US0231351067': 'AMZN',    // Amazon
-  'US1667641005': 'CHTR',    // Charter Communications
-  'US9311421039': 'WMT',     // Walmart
-  'US4180561028': 'HD',      // Home Depot
-  'US7427181091': 'PG',      // Procter & Gamble
-  'US4824801009': 'JNJ',     // Johnson & Johnson
-}
-
-// Common US stock ISINs → Yahoo ticker
-// Needed because Finnhub ISIN search is unreliable for US-listed stocks
+// Common US stock ISINs → Yahoo ticker (Finnhub unreliable for US ISINs)
 export const US_ISIN_TO_TICKER = {
   'US0846707026': 'BRK-B',   // Berkshire Hathaway B
   'US0231351067': 'AMZN',    // Amazon
