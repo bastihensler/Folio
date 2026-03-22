@@ -672,7 +672,7 @@ export const ETF_DATA = {
   },
 
   // ── Amundi STOXX Europe 600 Industrials (LIGS) — LU1834987890 — Acc ──
-  'LIGS.PA': {
+  'IND.PA': {
     name: 'Amundi STOXX Europe 600 Industrials ETF', ter: 0.30, dist: false,
     sectors: { Industrials: 100 },
     countries: { France: 18.4, Germany: 16.8, 'United Kingdom': 14.2, Sweden: 12.4, Switzerland: 9.8, Denmark: 7.4, Spain: 5.8, Netherlands: 4.8, Other: 10.4 },
@@ -754,7 +754,7 @@ export const ETF_ALIASES = {
   // Listed as VHYL on London/Amsterdam, VGWD on Xetra
   VHYL: 'VHYL.AS', 'VHYL.AS': 'VHYL.AS', 'VHYL.L': 'VHYL.AS',
   VGWD: 'VHYL.AS', 'VGWD.DE': 'VHYL.AS',
-  LIGS: 'LIGS.PA', 'LIGS.PA': 'LIGS.PA', C6I: 'LIGS.PA', 'C6I.PA': 'LIGS.PA',
+  LIGS: 'IND.PA', 'LIGS.PA': 'IND.PA', 'LIGS.DE': 'IND.PA', C6I: 'IND.PA', 'C6I.PA': 'IND.PA', IND: 'IND.PA', 'IND.PA': 'IND.PA',
   HSTE: 'HSTE.L',  'HSTE.L': 'HSTE.L',
   SPY:  'VOO',     IVV:  'VOO',
 }
@@ -796,7 +796,7 @@ export const ISIN_TO_ETF = {
   'NL0010408704': 'TSWE.AS',  // VanEck World Equal Weight Dist
   'IE00BYWQWR46': 'ESPO.AS',  // VanEck Video Gaming & Esports Acc
   // Amundi
-  'LU1834987890': 'LIGS.PA',  // Amundi STOXX Europe 600 Industrials Acc
+  'LU1834987890': 'IND.PA',   // Amundi STOXX Europe 600 Industrials Acc (Yahoo: IND.PA)
   // SPDR
   'IE00BYTRRD19': 'SPFT.DE',  // SPDR MSCI World Technology Acc
 }
