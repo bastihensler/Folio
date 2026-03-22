@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { sb, ETF_DATA, ETF_HOLDINGS, ETF_ALIASES, ISIN_TO_ETF, resolveEtf, stockCountry, COLORS, delay, fetchPrice, fetchPriceAndYield, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB } from './config.js'
+import { sb, ETF_DATA, ETF_HOLDINGS, ETF_ALIASES, ISIN_TO_ETF, US_ISIN_TO_TICKER, resolveEtf, stockCountry, COLORS, delay, fetchPrice, fetchPriceAndYield, fetchDividends, fetchAllFxRates, DEFAULT_FX, FINNHUB } from './config.js'
 import { Card, SLabel, Btn, FLabel, Inp, Sel, Modal, thS, Td, fmtE, fmtN, pct } from './ui.jsx'
 import AuthScreen from './AuthScreen.jsx'
 
@@ -444,6 +444,16 @@ export default function App() {
     if (!nh.isin || nh.isin.length < 10) return
     setIsinLookup('loading')
     try {
+      // Check US stock ISIN map first — Finnhub is unreliable for US ISINs
+      const usTicker = US_ISIN_TO_TICKER[nh.isin.toUpperCase()]
+      if (usTicker) {
+        const enriched = await enrichSymbol(usTicker, 'stock', '', nh.isin)
+        setNh(h => ({ ...h, ...enriched }))
+        setIsinResults([])
+        setIsinLookup('found')
+        return
+      }
+
       const r = await fetch(`${FINNHUB}/search&q=${nh.isin.toUpperCase()}`)
       const d = await r.json()
       const results = d?.result || []
@@ -486,7 +496,8 @@ export default function App() {
         setIsinResults(results.slice(0, 6))
         setIsinLookup('found')
       } else {
-        setIsinLookup('notfound')
+        // For US ISINs not in our map, show a helpful message with the country code
+        setIsinLookup(countryCode === 'US' ? 'us_manual' : 'notfound')
       }
     } catch (e) {
       console.error('ISIN lookup error:', e)
