@@ -26,6 +26,7 @@ export default function App() {
   const [csvMsg,        setCsvMsg]        = useState('')
   // Fix #5: declare isinResults state before it's used
   const [isinResults,   setIsinResults]   = useState([])
+  const [isinChoosing,  setIsinChoosing]  = useState(false) // show selection step
   const [editingField,  setEditingField]  = useState(null)  // { id, field, value }
   const [holdingDetail, setHoldingDetail] = useState(null)  // holding object for detail modal
   const [detailEdit,    setDetailEdit]    = useState({})    // edited field values
@@ -489,23 +490,42 @@ export default function App() {
       }
       if (!best) best = results[0]
 
-      if (best || ISIN_TO_ETF[nh.isin.toUpperCase()]) {
-        // If we have a canonical ticker for this ISIN, use it directly
-        // (avoids wrong symbols from Finnhub e.g. SXRT.ISE instead of SXRT.DE)
-        const canonicalKey = ISIN_TO_ETF[nh.isin.toUpperCase()]
-        const canonicalSym = canonicalKey || best?.symbol || best?.displaySymbol || ''
-        const sym  = canonicalSym
-        const name = best?.description || (ETF_DATA[canonicalKey]?.name) || sym
-        const fType = (best?.type || '').toUpperCase()
-        const type = canonicalKey
-          ? 'etf'
-          : (['ETF','ETP','FUND','MUTUALFUND','BOND'].some(t => fType.includes(t)) ? 'etf' : fType === 'CRYPTO' ? 'crypto' : 'stock')
-        const enriched = await enrichSymbol(sym, type, name, nh.isin || '')
+      const canonicalKey = ISIN_TO_ETF[nh.isin.toUpperCase()]
+
+      if (canonicalKey) {
+        // Known canonical ticker — use directly, no ambiguity
+        const sym  = canonicalKey
+        const name = ETF_DATA[canonicalKey]?.name || best?.description || sym
+        const enriched = await enrichSymbol(sym, 'etf', name, nh.isin)
         setNh(h => ({ ...h, ...enriched }))
-        setIsinResults(results.slice(0, 6))
+        setIsinResults(results.slice(0, 8))
+        setIsinChoosing(false)
+        setIsinLookup('found')
+      } else if (results.length > 1) {
+        // Multiple results and no canonical — show selection UI
+        // Deduplicate by displaySymbol, keep meaningful ones
+        const seen = new Set()
+        const deduped = results.filter(r => {
+          const key = r.displaySymbol || r.symbol
+          if (!key || seen.has(key)) return false
+          seen.add(key)
+          return true
+        }).slice(0, 8)
+        setIsinResults(deduped)
+        setIsinChoosing(true)
+        setIsinLookup('choosing')
+      } else if (best) {
+        // Single result — auto-pick
+        const sym  = best.symbol || best.displaySymbol || ''
+        const name = best.description || ''
+        const fType = (best.type || '').toUpperCase()
+        const type = ['ETF','ETP','FUND','MUTUALFUND','BOND'].some(t => fType.includes(t)) ? 'etf' : fType === 'CRYPTO' ? 'crypto' : 'stock'
+        const enriched = await enrichSymbol(sym, type, name, nh.isin)
+        setNh(h => ({ ...h, ...enriched }))
+        setIsinResults([best])
+        setIsinChoosing(false)
         setIsinLookup('found')
       } else {
-        // For US ISINs not in our map, show a helpful message with the country code
         setIsinLookup('notfound')
       }
     } catch (e) {
@@ -515,12 +535,13 @@ export default function App() {
   }
 
   const selectIsinResult = async result => {
-    const sym  = result.symbol || result.displaySymbol || ''
+    const sym  = result.displaySymbol || result.symbol || ''
     const name = result.description || ''
     const ft = (result.type || '').toUpperCase()
     const type = ['ETF','ETP','FUND','MUTUALFUND'].some(t => ft.includes(t)) ? 'etf' : ft === 'CRYPTO' ? 'crypto' : 'stock'
     setIsinLookup('loading')
-    const enriched = await enrichSymbol(sym, type, name)
+    setIsinChoosing(false)
+    const enriched = await enrichSymbol(sym, type, name, nh.isin || '')
     setNh(h => ({ ...h, ...enriched }))
     setIsinLookup('found')
   }
@@ -1812,15 +1833,54 @@ export default function App() {
           </div>
 
           {/* Exchange switcher */}
+          {/* ── Ambiguous ISIN: selection step ── */}
+          {isinLookup === 'choosing' && isinResults.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 9, color: 'var(--accent)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 8 }}>
+                Meerdere noteringen gevonden — kies de juiste:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {isinResults.map((r, i) => {
+                  const sym = r.displaySymbol || r.symbol || ''
+                  const exchange = sym.includes('.') ? sym.split('.').pop() : (r.exchange || '—')
+                  const ft = (r.type || '').toUpperCase()
+                  const isEtf = ['ETF','ETP','FUND'].some(t => ft.includes(t))
+                  return (
+                    <button key={i} onClick={() => selectIsinResult(r)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 7, border: '1px solid var(--border2)', background: 'var(--surface2)', cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.1s' }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border2)'}>
+                      <div style={{ width: 36, height: 36, borderRadius: 6, background: isEtf ? '#001a2e' : '#0d1f0d', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <span style={{ fontFamily: 'DM Mono', fontSize: 8, color: isEtf ? 'var(--blue)' : 'var(--green)', textTransform: 'uppercase', textAlign: 'center', lineHeight: 1.2 }}>{exchange}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: 'DM Mono', fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>{sym}</div>
+                        <div style={{ fontFamily: 'DM Mono', fontSize: 10, color: 'var(--muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description || '—'}</div>
+                      </div>
+                      <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                        <div style={{ fontFamily: 'DM Mono', fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase' }}>{r.type || 'stock'}</div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── After selection: exchange switcher (compact) ── */}
           {isinResults.length > 1 && isinLookup === 'found' && (
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>Beurs wisselen:</div>
+              <div style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>Andere notering kiezen:</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {isinResults.map((r, i) => (
-                  <button key={i} onClick={() => selectIsinResult(r)} style={{ padding: '3px 10px', borderRadius: 4, border: `1px solid ${nh.symbol === r.symbol ? 'var(--accent)' : 'var(--border2)'}`, background: nh.symbol === r.symbol ? '#0d2a1f' : 'var(--surface2)', color: nh.symbol === r.symbol ? 'var(--accent)' : 'var(--muted)', fontFamily: 'DM Mono', fontSize: 10, cursor: 'pointer', transition: 'all 0.1s' }}>
-                    {r.symbol}
-                  </button>
-                ))}
+                {isinResults.map((r, i) => {
+                  const sym = r.displaySymbol || r.symbol || ''
+                  return (
+                    <button key={i} onClick={() => selectIsinResult(r)}
+                      style={{ padding: '3px 10px', borderRadius: 4, border: `1px solid ${nh.symbol === sym ? 'var(--accent)' : 'var(--border2)'}`, background: nh.symbol === sym ? '#0d2a1f' : 'var(--surface2)', color: nh.symbol === sym ? 'var(--accent)' : 'var(--muted)', fontFamily: 'DM Mono', fontSize: 10, cursor: 'pointer', transition: 'all 0.1s' }}>
+                      {sym}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}

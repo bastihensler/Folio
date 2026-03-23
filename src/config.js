@@ -558,9 +558,27 @@ export const ETF_DATA = {
     ],
   },
 
-  // ── Amundi MSCI World (LCUW/CW8) — LU0274211480 — Acc ────────────────
+  // ── Amundi MSCI World V (LCUW) — Acc ─────────────────────────────────
   'LCUW.DE': {
-    name: 'Amundi MSCI World UCITS ETF', ter: 0.38, dist: false,
+    name: 'Amundi MSCI World V UCITS ETF', ter: 0.38, dist: false,
+    sectors: { Technology: 25.4, Financials: 15.3, Healthcare: 12.8, Industrials: 11.2, 'Consumer Discretionary': 10.6, 'Communication Services': 8.1, 'Consumer Staples': 6.2, Energy: 4.5, Materials: 3.2, Utilities: 2.2, 'Real Estate': 2.8 },
+    countries: { 'United States': 70.8, Japan: 6.2, 'United Kingdom': 4.4, France: 3.4, Canada: 3.2, Switzerland: 2.8, Germany: 2.5, Australia: 2.2, Netherlands: 1.3, Other: 3.2 },
+    holdings: [
+      { symbol: 'AAPL',  name: 'Apple Inc.',      weight: 5.12 },
+      { symbol: 'MSFT',  name: 'Microsoft',       weight: 4.68 },
+      { symbol: 'NVDA',  name: 'NVIDIA Corp',     weight: 4.29 },
+      { symbol: 'AMZN',  name: 'Amazon',          weight: 2.68 },
+      { symbol: 'META',  name: 'Meta Platforms',  weight: 1.84 },
+      { symbol: 'GOOGL', name: 'Alphabet A',      weight: 1.49 },
+      { symbol: 'TSLA',  name: 'Tesla Inc.',      weight: 1.02 },
+      { symbol: 'JPM',   name: 'JPMorgan Chase',  weight: 0.99 },
+    ],
+  },
+
+  // ── Amundi MSCI World Swap (CW8) — Acc — separate share class from LCUW
+  // CW8.PA trades ~€450, LCUW.DE trades ~€390 — different NAVs, same index
+  'CW8.PA': {
+    name: 'Amundi MSCI World Swap UCITS ETF', ter: 0.38, dist: false,
     sectors: { Technology: 25.4, Financials: 15.3, Healthcare: 12.8, Industrials: 11.2, 'Consumer Discretionary': 10.6, 'Communication Services': 8.1, 'Consumer Staples': 6.2, Energy: 4.5, Materials: 3.2, Utilities: 2.2, 'Real Estate': 2.8 },
     countries: { 'United States': 70.8, Japan: 6.2, 'United Kingdom': 4.4, France: 3.4, Canada: 3.2, Switzerland: 2.8, Germany: 2.5, Australia: 2.2, Netherlands: 1.3, Other: 3.2 },
     holdings: [
@@ -781,7 +799,8 @@ export const ETF_ALIASES = {
   TSWE: 'TSWE.AS', TGET: 'TSWE.AS',
   ESPO: 'ESPO.AS', 'ESPO.DE': 'ESPO.AS',  // VanEck Gaming (acc)
   // Amundi
-  LCUW: 'LCUW.DE', CW8: 'LCUW.DE',
+  LCUW: 'LCUW.DE', 'LCUW.DE': 'LCUW.DE', 'LCUW.F': 'LCUW.DE',
+  CW8: 'CW8.PA', 'CW8.PA': 'CW8.PA', 'CW8.DE': 'CW8.PA', 'CW8.MI': 'CW8.PA', 'CW8.L': 'CW8.PA',
   LIGS: 'IND.PA', 'LIGS.PA': 'IND.PA', C6I: 'IND.PA', 'C6I.PA': 'IND.PA', IND: 'IND.PA',
   // SPDR
   SPFT: 'SPFT.DE',
@@ -849,7 +868,7 @@ export const ISIN_TO_ETF = {
   // Xtrackers
   'LU0292096186': 'XGSD.DE',  // Xtrackers STOXX Global Select Dividend 100
   'LU0274208692': 'XDWD.DE',  // Xtrackers MSCI World (old ISIN)
-  'LU0274211480': 'LCUW.DE',  // Amundi/Xtrackers MSCI World (some share ISIN)
+  'LU0274211480': 'LCUW.DE',  // Amundi MSCI World V (LCUW.DE) — note CW8.PA is a diff share class
   'IE00BM67HT60': 'XDWT.DE',  // Xtrackers MSCI World IT Acc
   'IE00BM67HS53': 'XDWM.DE',  // Xtrackers MSCI World Materials Acc
   'IE00BLNMYC90': 'XDEW.DE',  // Xtrackers S&P 500 Equal Weight Acc
