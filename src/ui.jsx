@@ -52,6 +52,6 @@ export function Modal({ title, onClose, children, width = 500 }) {
 
 export const thS = { padding: '7px 8px', textAlign: 'left', fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono', letterSpacing: '0.8px', fontWeight: 400, whiteSpace: 'nowrap' }
 
-export function Td({ children, style = {} }) {
-  return <td style={{ padding: '8px', fontFamily: 'DM Mono', fontSize: 12, ...style }}>{children}</td>
+export function Td({ children, style = {}, ...rest }) {
+  return <td style={{ padding: '8px', fontFamily: 'DM Mono', fontSize: 12, ...style }} {...rest}>{children}</td>
 }
