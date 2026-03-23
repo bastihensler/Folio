@@ -868,7 +868,6 @@ export const ISIN_TO_ETF = {
   // Xtrackers
   'LU0292096186': 'XGSD.DE',  // Xtrackers STOXX Global Select Dividend 100
   'LU0274208692': 'XDWD.DE',  // Xtrackers MSCI World (old ISIN)
-  'LU0274211480': 'LCUW.DE',  // Amundi MSCI World V (LCUW.DE) — note CW8.PA is a diff share class
   'IE00BM67HT60': 'XDWT.DE',  // Xtrackers MSCI World IT Acc
   'IE00BM67HS53': 'XDWM.DE',  // Xtrackers MSCI World Materials Acc
   'IE00BLNMYC90': 'XDEW.DE',  // Xtrackers S&P 500 Equal Weight Acc

@@ -501,9 +501,9 @@ export default function App() {
         setIsinResults(results.slice(0, 8))
         setIsinChoosing(false)
         setIsinLookup('found')
-      } else if (results.length > 1) {
-        // Multiple results and no canonical — show selection UI
-        // Deduplicate by displaySymbol, keep meaningful ones
+      } else if (results.length > 0) {
+        // No canonical key — always show selection UI so user can pick the right listing
+        // Deduplicate by displaySymbol
         const seen = new Set()
         const deduped = results.filter(r => {
           const key = r.displaySymbol || r.symbol
@@ -511,20 +511,24 @@ export default function App() {
           seen.add(key)
           return true
         }).slice(0, 8)
-        setIsinResults(deduped)
-        setIsinChoosing(true)
-        setIsinLookup('choosing')
-      } else if (best) {
-        // Single result — auto-pick
-        const sym  = best.symbol || best.displaySymbol || ''
-        const name = best.description || ''
-        const fType = (best.type || '').toUpperCase()
-        const type = ['ETF','ETP','FUND','MUTUALFUND','BOND'].some(t => fType.includes(t)) ? 'etf' : fType === 'CRYPTO' ? 'crypto' : 'stock'
-        const enriched = await enrichSymbol(sym, type, name, nh.isin)
-        setNh(h => ({ ...h, ...enriched }))
-        setIsinResults([best])
-        setIsinChoosing(false)
-        setIsinLookup('found')
+        if (deduped.length === 1) {
+          // Only one option — auto-pick but still show the switcher after
+          const r = deduped[0]
+          const sym  = r.displaySymbol || r.symbol || ''
+          const name = r.description || ''
+          const fType = (r.type || '').toUpperCase()
+          const type = ['ETF','ETP','FUND','MUTUALFUND','BOND'].some(t => fType.includes(t)) ? 'etf' : fType === 'CRYPTO' ? 'crypto' : 'stock'
+          const enriched = await enrichSymbol(sym, type, name, nh.isin)
+          setNh(h => ({ ...h, ...enriched }))
+          setIsinResults(deduped)
+          setIsinChoosing(false)
+          setIsinLookup('found')
+        } else {
+          // Multiple options — always show chooser
+          setIsinResults(deduped)
+          setIsinChoosing(true)
+          setIsinLookup('choosing')
+        }
       } else {
         setIsinLookup('notfound')
       }
