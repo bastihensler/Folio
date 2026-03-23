@@ -760,7 +760,7 @@ export const ETF_ALIASES = {
 }
 
 // Common US stock ISINs → Yahoo ticker (Finnhub ISIN search unreliable for US stocks)
-// Common US stock ISINs → Yahoo ticker (Finnhub unreliable for US ISINs)
+// Stock ISINs → Yahoo ticker (Finnhub unreliable for non-US ISINs too)
 export const US_ISIN_TO_TICKER = {
   'US0846707026': 'BRK-B',   // Berkshire Hathaway B
   'US0231351067': 'AMZN',    // Amazon
@@ -779,6 +779,19 @@ export const US_ISIN_TO_TICKER = {
   'US4824801009': 'JNJ',     // Johnson & Johnson
   'US1101221083': 'CMG',     // Chipotle
   'US4592001014': 'IBM',     // IBM
+  // Danish stocks
+  'DK0062498333': 'NOVO-B.CO',  // Novo Nordisk B (Copenhagen)
+  'DK0060534915': 'ORSTED.CO',  // Ørsted (Copenhagen)
+  'DK0010274414': 'MAERSK-B.CO', // A.P. Møller-Mærsk B
+  // Swedish stocks
+  'SE0007100581': 'VOLV-B.ST', // Volvo B
+  'SE0012455275': 'ATCO-B.ST', // Atlas Copco B
+  // Norwegian stocks
+  'NO0010096985': 'EQNR.OL',  // Equinor
+  // Swiss stocks
+  'CH0012221716': 'ABB.SW',   // ABB Ltd
+  'CH0012032048': 'ROG.SW',   // Roche
+  'CH0012221716': 'ABB.SW',   // ABB
 }
 
 // ISIN → ETF_DATA key mapping for direct ISIN lookups
@@ -925,6 +938,8 @@ const SUFFIX_TO_CCY = {
 
 function toYahooSymbol(symbol) {
   if (!symbol) return null
+  // Normalise: spaces → hyphens (e.g. "NOVO B" → "NOVO-B")
+  symbol = symbol.trim().replace(/\s+/g, '-')
   // Already has Yahoo suffix (e.g. SXRT.DE, ASML.AS)
   if (/\.[A-Z]{1,4}$/.test(symbol)) return symbol
   // Has Finnhub MIC prefix (e.g. XETR:SXRT) — convert to Yahoo format

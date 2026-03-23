@@ -390,8 +390,13 @@ export default function App() {
   }
 
   const enrichSymbol = async (sym, type, name, isin = '') => {
+    // Normalise symbol — replace spaces with hyphens (e.g. "NOVO B" → "NOVO-B")
+    // and append exchange suffix if missing for known exchanges
+    const cleanSym = sym.trim().replace(/\s+/g, '-')
+    const sym2 = cleanSym !== sym ? cleanSym : sym
+
     // 1. ETF_DATA lookup — try symbol first, then ISIN directly
-    const etfKey  = type === 'etf' ? (resolveEtf(sym) || resolveEtf(isin)) : null
+    const etfKey  = type === 'etf' ? (resolveEtf(sym2) || resolveEtf(isin)) : null
     const etfMeta = etfKey ? ETF_DATA[etfKey] : null
 
     // 2. Finnhub stock profile for sector (stocks only)
@@ -411,7 +416,7 @@ export default function App() {
 
     // 3. Live price + dividend yield + ETF data from Yahoo (and ETF_DATA curated)
     // fetchPriceAndYield now returns holdings/sectors/countries for ETFs
-    const priceData = await fetchPriceAndYield(sym, type, fxRates)
+    const priceData = await fetchPriceAndYield(sym2 || sym, type, fxRates)
 
     // 4. Assemble enriched holding
     // Holdings/sectors/countries: prefer curated ETF_DATA, fall back to Yahoo live data
@@ -425,8 +430,8 @@ export default function App() {
     }
 
     return {
-      symbol:       sym,
-      name:         name || sym,
+      symbol:       sym2 || sym,
+      name:         name || sym2 || sym,
       type,
       sector,
       currency:     priceData?.currency || 'EUR',
@@ -501,7 +506,7 @@ export default function App() {
         setIsinLookup('found')
       } else {
         // For US ISINs not in our map, show a helpful message with the country code
-        setIsinLookup(countryCode === 'US' ? 'us_manual' : 'notfound')
+        setIsinLookup('notfound')
       }
     } catch (e) {
       console.error('ISIN lookup error:', e)
@@ -1680,13 +1685,18 @@ export default function App() {
                 <SLabel text="Full Exposure Breakdown" />
                 <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
-                    <th style={thS}>#</th><th style={thS}>Symbol</th><th style={thS}>Name</th>
-                    <th style={thS}>Total (€)</th><th style={thS}>Total %</th><th style={thS}>Flag</th>
-                    <th style={thS}>Direct (€)</th><th style={thS}>Direct%</th>
+                    <th style={thS}>#</th>
+                    <SortTh label="Symbol"   tabKey="exposure" col="symbol" />
+                    <SortTh label="Name"     tabKey="exposure" col="name" />
+                    <SortTh label="Total (€)"tabKey="exposure" col="totalEUR" />
+                    <SortTh label="Total %"  tabKey="exposure" col="totalPct" />
+                    <th style={thS}>Flag</th>
+                    <SortTh label="Direct (€)"tabKey="exposure" col="directEUR" />
+                    <SortTh label="Direct%"  tabKey="exposure" col="directPct" />
                     {C.etfSymbols.map(e => <th key={e} style={thS}>via {e} (€)</th>)}
                   </tr></thead>
                   <tbody>
-                    {C.exposureRows.map((r, i) => {
+                    {sortRows(C.exposureRows, 'exposure').map((r, i) => {
                       const multi = (r.directEUR > 0 ? 1 : 0) + Object.keys(r.etfBreakdown).length > 1
                       return (
                         <tr key={r.symbol} style={{ borderBottom: '1px solid var(--border)' }} onMouseEnter={e => e.currentTarget.style.background = '#0d1218'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
