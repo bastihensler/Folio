@@ -141,7 +141,7 @@ export const ETF_DATA = {
 
   // ── Vanguard global ────────────────────────────────────────────────────
   'VWRL.AS': {
-    name: 'Vanguard FTSE All-World ETF', ter: 0.22, dist: true,
+    name: 'Vanguard FTSE All-World ETF', ter: 0.22, dist: true, dividendYield: 1.37,
     sectors:  { Technology: 24.8, Financials: 16.2, Healthcare: 11.3, Industrials: 10.9, 'Consumer Discretionary': 10.2, 'Communication Services': 7.8, 'Consumer Staples': 6.4, Energy: 4.8, Materials: 3.9, Utilities: 2.8, 'Real Estate': 2.5 },
     countries: { 'United States': 64.2, Japan: 5.8, 'United Kingdom': 4.1, France: 3.2, Canada: 3.1, Switzerland: 2.6, Germany: 2.4, Australia: 2.1, Netherlands: 1.2, 'South Korea': 1.8, Taiwan: 2.1, India: 1.9, Other: 5.5 },
     holdings: [
@@ -310,7 +310,7 @@ export const ETF_DATA = {
   // ── iShares Global Clean Energy (IQQH) — IE00B1XNHC34 — Dist ───────
   // ~1.2% dividend yield, TER 0.65%
   'IQQH.DE': {
-    name: 'iShares Global Clean Energy ETF', ter: 0.65, dist: true, dividendYield: 1.17,
+    name: 'iShares Global Clean Energy ETF', ter: 0.65, dist: true, dividendYield: 0.29,
     sectors: { Utilities: 62.4, Technology: 18.8, Industrials: 12.6, Energy: 4.2, Materials: 2.0 },
     countries: { 'United States': 42.1, Denmark: 9.8, Spain: 7.4, China: 7.2, Germany: 5.8, 'United Kingdom': 4.9, Italy: 4.2, Brazil: 3.8, Canada: 3.4, Other: 11.4 },
     holdings: [
@@ -743,20 +743,52 @@ export const ETF_DATA = {
 }
 
 export const ETF_ALIASES = {
-  VWRL: 'VWRL.AS', VWCE: 'VWCE.DE',
-  IWDA: 'IWDA.AS', CSPX: 'CSPX.AS',
-  EMIM: 'EMIM.AS', XDWD: 'XDWD.DE',
+  // Vanguard
+  VWRL: 'VWRL.AS', 'VWRL.L': 'VWRL.AS',
+  VWCE: 'VWCE.DE',
+  VHYL: 'VHYL.AS', 'VHYL.L': 'VHYL.AS', VGWD: 'VHYL.AS', 'VGWD.DE': 'VHYL.AS',
+  VFEM: 'VFEM.AS', 'VFEM.L': 'VFEM.AS',
+  VUSA: 'VUSA.AS', 'VUSA.L': 'VUSA.AS',
+  VUSD: 'VUSA.AS', 'VUSD.L': 'VUSA.AS',   // VUSD.L = London listing of same fund
+  // iShares
+  IWDA: 'IWDA.AS', 'IWDA.L': 'IWDA.AS',
+  SWDA: 'IWDA.AS', 'SWDA.L': 'IWDA.AS',   // SWDA.L = London listing of iShares MSCI World (acc)
+  CSPX: 'CSPX.AS', 'CSPX.L': 'CSPX.AS',
+  EMIM: 'EMIM.AS',
+  IQQH: 'IQQH.DE', 'IQQH.L': 'IQQH.DE',
+  INRG: 'IQQH.DE', 'INRG.L': 'IQQH.DE',  // INRG.L = London listing of iShares Clean Energy (dist)
+  SXRT: 'SXRT.DE',
+  SXR7: 'SXR7.DE',
+  IMEU: 'IMEU.AS', IQQY: 'IMEU.AS',
+  ISPA: 'ISPA.DE', EXSH: 'ISPA.DE',
+  EXSE: 'EXSE.DE',
+  ESIS: 'ESIS.DE',
+  ESID: 'ESID.DE',
+  // Xtrackers
+  XDWD: 'XDWD.DE',
+  XGSD: 'XGSD.DE', DXSB: 'XGSD.DE',
+  XDWT: 'XDWT.DE',
+  XDWM: 'XDWM.DE',
+  XDEW: 'XDEW.DE', 'XDEW.L': 'XDEW.DE',  // XDEW.L = London listing (acc)
+  DX2X: 'DX2X.DE',
+  XSX6: 'DX2X.DE', 'XSX6.DE': 'DX2X.DE', 'XSX6.L': 'DX2X.DE',  // XSX6 = acc capitalisation share class
+  DBXW: 'DBXW.DE',
+  XAIX: 'XAIX.DE',
+  // L&G
   AIAG: 'AIAG.L',
-  // Xtrackers STOXX Global Select Dividend 100 (ISIN: LU0292096186)
-  XGSD: 'XGSD.DE', 'XGSD.DE': 'XGSD.DE',
-  DXSB: 'XGSD.DE', 'DXSB.DE': 'XGSD.DE',
-  // Vanguard FTSE All-World High Dividend Yield (ISIN: IE00B8GKDB10)
-  // Listed as VHYL on London/Amsterdam, VGWD on Xetra
-  VHYL: 'VHYL.AS', 'VHYL.AS': 'VHYL.AS', 'VHYL.L': 'VHYL.AS',
-  VGWD: 'VHYL.AS', 'VGWD.DE': 'VHYL.AS',
-  LIGS: 'IND.PA', 'LIGS.PA': 'IND.PA', 'LIGS.DE': 'IND.PA', C6I: 'IND.PA', 'C6I.PA': 'IND.PA', IND: 'IND.PA', 'IND.PA': 'IND.PA',
-  HSTE: 'HSTE.L',  'HSTE.L': 'HSTE.L',
-  SPY:  'VOO',     IVV:  'VOO',
+  AIAI: 'AIAI.L',
+  // VanEck
+  TSWE: 'TSWE.AS', TGET: 'TSWE.AS',
+  ESPO: 'ESPO.AS', 'ESPO.DE': 'ESPO.AS',  // VanEck Gaming (acc)
+  // Amundi
+  LCUW: 'LCUW.DE', CW8: 'LCUW.DE',
+  LIGS: 'IND.PA', 'LIGS.PA': 'IND.PA', C6I: 'IND.PA', 'C6I.PA': 'IND.PA', IND: 'IND.PA',
+  // SPDR
+  SPFT: 'SPFT.DE',
+  // HSBC
+  HSTE: 'HSTE.L',
+  // US
+  SPY: 'VOO', IVV: 'VOO',
 }
 
 // Common US stock ISINs → Yahoo ticker (Finnhub ISIN search unreliable for US stocks)
@@ -801,7 +833,7 @@ export const ISIN_TO_ETF = {
   'IE00BK5BQT80': 'VWCE.DE',  // Vanguard FTSE All-World Acc
   'IE00B8GKDB10': 'VHYL.AS',  // Vanguard FTSE All-World High Dividend Yield
   'IE00B3VVMM84': 'VFEM.AS',  // Vanguard FTSE Emerging Markets Dist
-  'IE00B3XXRP09': 'VUSA.AS',  // Vanguard S&P 500 Dist
+  'IE00B3XXRP09': 'VUSA.AS',  // Vanguard S&P 500 Dist (VUSA.AS / VUSD.L)
   // iShares
   'IE00B4L5Y983': 'IWDA.AS',  // iShares Core MSCI World Acc
   'IE00B5BMR087': 'CSPX.AS',  // iShares Core S&P 500 Acc
