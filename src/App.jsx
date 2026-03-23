@@ -1681,9 +1681,9 @@ export default function App() {
                 <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ borderBottom: '1px solid var(--border2)' }}>
                     <th style={thS}>#</th><th style={thS}>Symbol</th><th style={thS}>Name</th>
+                    <th style={thS}>Total (€)</th><th style={thS}>Total %</th><th style={thS}>Flag</th>
                     <th style={thS}>Direct (€)</th><th style={thS}>Direct%</th>
                     {C.etfSymbols.map(e => <th key={e} style={thS}>via {e} (€)</th>)}
-                    <th style={thS}>Total (€)</th><th style={thS}>Total %</th><th style={thS}>Flag</th>
                   </tr></thead>
                   <tbody>
                     {C.exposureRows.map((r, i) => {
@@ -1693,9 +1693,6 @@ export default function App() {
                           <Td style={{ color: 'var(--muted)', fontSize: 10 }}>{i + 1}</Td>
                           <Td style={{ fontWeight: 600, color: r.totalPct > 5 ? 'var(--yellow)' : 'var(--text)' }}>{r.symbol}</Td>
                           <Td style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{r.name}</Td>
-                          <Td style={{ color: r.directEUR > 0 ? 'var(--accent)' : 'var(--border2)' }}>{r.directEUR > 0 ? fmtE(r.directEUR) : '—'}</Td>
-                          <Td style={{ color: r.directPct > 0 ? 'var(--accent)' : 'var(--border2)' }}>{r.directPct > 0 ? fmtN(r.directPct) + '%' : '—'}</Td>
-                          {C.etfSymbols.map(etf => <Td key={etf} style={{ color: r.etfBreakdown[etf] ? 'var(--blue)' : 'var(--border2)' }}>{r.etfBreakdown[etf] ? fmtE(r.etfBreakdown[etf]) : '—'}</Td>)}
                           <Td style={{ fontWeight: 600 }}>{fmtE(r.totalEUR)}</Td>
                           <Td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -1706,6 +1703,9 @@ export default function App() {
                             </div>
                           </Td>
                           <Td>{multi ? <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: '#2d2000', color: 'var(--yellow)', fontFamily: 'DM Mono' }}>OVERLAP</span> : <span style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'DM Mono' }}>—</span>}</Td>
+                          <Td style={{ color: r.directEUR > 0 ? 'var(--accent)' : 'var(--border2)' }}>{r.directEUR > 0 ? fmtE(r.directEUR) : '—'}</Td>
+                          <Td style={{ color: r.directPct > 0 ? 'var(--accent)' : 'var(--border2)' }}>{r.directPct > 0 ? fmtN(r.directPct) + '%' : '—'}</Td>
+                          {C.etfSymbols.map(etf => <Td key={etf} style={{ color: r.etfBreakdown[etf] ? 'var(--blue)' : 'var(--border2)' }}>{r.etfBreakdown[etf] ? fmtE(r.etfBreakdown[etf]) : '—'}</Td>)}
                         </tr>
                       )
                     })}
