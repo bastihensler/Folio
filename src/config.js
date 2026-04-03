@@ -593,6 +593,25 @@ export const ETF_DATA = {
     ],
   },
 
+  // ── Xtrackers DAX UCITS ETF 1C (DBXD) — LU0274211480 — Acc ─────────────
+  'DBXD.DE': {
+    name: 'Xtrackers DAX UCITS ETF 1C', ter: 0.09, dist: false,
+    sectors: { Industrials: 26.2, Financials: 22.3, Technology: 18.6, 'Consumer Discretionary': 8.7, 'Communication Services': 7.0, Healthcare: 5.8, Materials: 5.1, Utilities: 3.6, 'Consumer Staples': 1.4, 'Real Estate': 1.3 },
+    countries: { Germany: 100 },
+    holdings: [
+      { symbol: 'SAP.DE',  name: 'SAP SE',              weight: 16.20 },
+      { symbol: 'SIE.DE',  name: 'Siemens AG',          weight: 9.35 },
+      { symbol: 'ALV.DE',  name: 'Allianz SE',          weight: 8.66 },
+      { symbol: 'DTE.DE',  name: 'Deutsche Telekom AG', weight: 7.00 },
+      { symbol: 'AIR.PA',  name: 'Airbus SE',           weight: 5.33 },
+      { symbol: 'MUV2.DE', name: 'Munich Re',           weight: 4.96 },
+      { symbol: 'RHM.DE',  name: 'Rheinmetall AG',      weight: 4.09 },
+      { symbol: 'DB1.DE',  name: 'Deutsche Börse AG',   weight: 3.29 },
+      { symbol: 'ENR.DE',  name: 'Siemens Energy AG',   weight: 2.83 },
+      { symbol: 'DBK.DE',  name: 'Deutsche Bank AG',    weight: 2.76 },
+    ],
+  },
+
   // ── Xtrackers MSCI World Swap (DBXW) — LU0852473528 — Acc ────────────
   'DBXW.DE': {
     name: 'Xtrackers MSCI World Swap UCITS ETF', ter: 0.19, dist: false,
@@ -808,6 +827,11 @@ export const ETF_ALIASES = {
   HSTE: 'HSTE.L',
   // US
   SPY: 'VOO', IVV: 'VOO',
+  // ING broker ETFs
+  WTCH: 'WTCH.AS', 'WTCH.AS': 'WTCH.AS', 'WTCH.L': 'WTCH.AS', 'WTEC.L': 'WTCH.AS', 'WTEC.AS': 'WTCH.AS',
+  EXSE: 'EXSE.DE', 'EXSE.DE': 'EXSE.DE', 'EXSE.L': 'EXSE.DE',
+  GSESA: 'GSESA.AS', 'GSESA.AS': 'GSESA.AS', 'GSESA.F': 'GSESA.AS',
+  DBXD: 'DBXD.DE', 'DBXD.DE': 'DBXD.DE', 'DBXD.L': 'DBXD.DE',
 }
 
 // Common US stock ISINs → Yahoo ticker (Finnhub ISIN search unreliable for US stocks)
@@ -883,7 +907,20 @@ export const ISIN_TO_ETF = {
   // Amundi
   'LU1834987890': 'IND.PA',   // Amundi STOXX Europe 600 Industrials Acc (Yahoo: IND.PA)
   // SPDR
-  'IE00BYTRRD19': 'SPFT.DE',  // SPDR MSCI World Technology Acc
+  'IE00BYTRRD19': 'WTCH.AS',  // SPDR MSCI World Technology UCITS ETF Acc
+  // ── ING broker funds ──────────────────────────────────────────────────────
+  'LU0274211480': 'DBXD.DE',  // Xtrackers DAX UCITS ETF 1C (ING confirmed)
+  'IE00B1YZSC51': 'IMEU.AS',  // iShares Core MSCI Europe UCITS ETF EUR (Dist)
+  'DE000A0D8QZ7': 'EXSE.DE',  // iShares STOXX Europe Small 200 UCITS ETF (DE)
+  'DE000A0F5UH1': 'ISPA.DE',  // iShares STOXX Global Select Dividend 100 (DE)
+  'IE00BGV5VN51': 'XAIX.DE',  // Xtrackers AI & Big Data UCITS ETF 1C
+  'NL0012125736': 'GSESA.AS', // Goldman Sachs Enhanced Index Sustainable Equity Fund
+  // ── Vanguard institutional → proxy via equivalent retail ETF (same index) ──
+  'IE00BFPM9J74': 'VFEM.AS',  // Vanguard EM Stock Index Instl Plus → VFEM (FTSE EM)
+  'IE00BFPM9N11': 'VWCE.DE',  // Vanguard Global Stock Index Instl Plus → VWCE (FTSE All-World Acc)
+  'IE00BFPM9V94': 'VUSA.AS',  // Vanguard US 500 Stock Index Instl Plus → VUSA (S&P 500 Dist)
+  // ── BlackRock institutional → proxy via equivalent ETF (same index) ────────
+  'LU0852473528': 'EMIM.AS',  // BlackRock Global EM Equity Index → EMIM (iShares MSCI EM IMI)
 }
 
 export function resolveEtf(symbolOrIsin) {
