@@ -17,9 +17,7 @@ export default function App() {
   const [fetchStatus,   setFetchStatus]   = useState('idle')
   const [fetchLog,      setFetchLog]      = useState([])
   const [lastUpdated,   setLastUpdated]   = useState(null)
-  const [perfData,      setPerfData]      = useState(() => {
-    try { const c = localStorage.getItem('folio_perf'); return c ? JSON.parse(c) : [] } catch { return [] }
-  })
+  const [perfData,      setPerfData]      = useState([])
   const [showAddH,      setShowAddH]      = useState(false)
   const [showAddT,      setShowAddT]      = useState(false)
   const [showProfile,   setShowProfile]   = useState(false)
@@ -162,12 +160,16 @@ export default function App() {
   }, [holdings.length])
 
   const loadData = async () => {
-    const [{ data: h, error: he }, { data: t, error: te }] = await Promise.all([
+    const [{ data: h, error: he }, { data: t, error: te }, { data: snapData }] = await Promise.all([
       sb.from('holdings').select('*').order('created_at'),
       sb.from('transactions').select('*').order('date', { ascending: false }),
+      sb.from('portfolio_snapshots').select('*').order('date', { ascending: true }),
     ])
     if (he) console.error('Holdings load error:', he)
     if (te) console.error('Transactions load error:', te)
+    if (snapData && snapData.length >= 2) {
+      setPerfData(snapData.map(s => ({ month: new Date(s.date).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }), value: s.value, date: s.date })))
+    }
     if (h) setHoldings(h.map(r => ({
       id: r.id, symbol: r.symbol, name: r.name, type: r.type,
       qty: +r.qty, avgCost: +r.avg_cost, currentPrice: +r.current_price,
@@ -331,39 +333,24 @@ export default function App() {
     }
     setHoldings(updated)
 
-    // Step 3: build portfolio history from transactions
-    // Fix #6: add clear label that this uses current prices as approximation
-    if (txns.length > 0) {
-      addLog('Building portfolio history (using current prices as approximation)…')
-      const sorted = [...txns].sort((a, b) => a.date.localeCompare(b.date))
-      const months = []
-      const cur = new Date(sorted[sorted.length - 1].date); cur.setDate(1)
-      while (cur <= new Date()) {
-        months.push(cur.toISOString().slice(0, 10))
-        cur.setMonth(cur.getMonth() + 1)
-      }
-      const newPerf = months.slice(-12).map(md => {
-        const snap = {}
-        txns.forEach(t => {
-          if (t.date <= md) {
-            if (!snap[t.symbol]) snap[t.symbol] = 0
-            snap[t.symbol] += t.type === 'buy' ? +t.qty : -+t.qty
-          }
-        })
-        let val = 0
-        Object.entries(snap).forEach(([sym, qty]) => {
-          if (qty <= 0) return
-          const h = updated.find(x => x.symbol === sym)
-          if (h) val += qty * h.currentPrice
-        })
-        return val > 0
-          ? { month: new Date(md).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }), value: val }
-          : null
-      }).filter(Boolean)
-      if (newPerf.length >= 2) {
-        setPerfData(newPerf)
-        try { localStorage.setItem('folio_perf', JSON.stringify(newPerf)) } catch {}
-        addLog(`✓ History: ${newPerf.length} months`)
+    // Step 3: save today's portfolio value as a snapshot to Supabase
+    {
+      addLog('Saving portfolio snapshot…')
+      const newPerf = [1] // triggers the save block below
+      // Save today's total value as a snapshot to Supabase
+      const todayVal = updated.reduce((s, h) => s + h.qty * h.currentPrice, 0)
+      if (todayVal > 0) {
+        const today = new Date().toISOString().slice(0, 10)
+        await sb.from('portfolio_snapshots').upsert(
+          { user_id: user.id, date: today, value: todayVal },
+          { onConflict: 'user_id,date' }
+        )
+        // Reload all snapshots for the chart
+        const { data: snapData } = await sb.from('portfolio_snapshots').select('*').eq('user_id', user.id).order('date', { ascending: true })
+        if (snapData && snapData.length >= 2) {
+          setPerfData(snapData.map(s => ({ month: new Date(s.date).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }), value: s.value, date: s.date })))
+          addLog(`✓ History: ${snapData.length} snapshots saved`)
+        }
       }
     }
 
@@ -1031,8 +1018,8 @@ export default function App() {
       totalAnnCost: tac, totalAnnDiv: tad, netAnnIncome: tad - tac,
       allocationData: alloc,
       typeData: Object.entries(byType).map(([name, value]) => ({ name, value })),
-      winners: [...rows].sort((a, b) => b.gainPct - a.gainPct).slice(0, 3),
-      losers:  [...rows].sort((a, b) => a.gainPct - b.gainPct).slice(0, 3),
+      winners: [...rows].sort((a, b) => b.gainPct - a.gainPct).slice(0, 10),
+      losers:  [...rows].sort((a, b) => a.gainPct - b.gainPct).slice(0, 10),
       avgVol:  rows.reduce((s, r) => s + Math.abs(r.gainPct), 0) / rows.length,
       concentration: alloc.length ? Math.max(...alloc.map(a => parseFloat(a.pct))) : 0,
       txnRows, totalTxnFees: txns.reduce((s, t) => s + (t.fee || 0), 0),
